@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:win": "pkg -t node20-win-x64 -o dist/sportfengur-webhooks.exe server.js"
   },
   "keywords": [],
   "author": "",
@@ -17,5 +18,8 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "nodemon": "^3.1.11"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
   }
 }
