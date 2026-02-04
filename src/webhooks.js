@@ -308,6 +308,6 @@ export function registerTestRoute(app) {
 
 export function registerRootRoute(app) {
   app.get('/', (req, res) => {
-    res.send('OK');
+    res.redirect('/docs');
   });
 }

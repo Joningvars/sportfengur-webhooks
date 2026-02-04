@@ -51,7 +51,12 @@ ngrok.exe http --url=yourname.ngrok.app 3000
 http://localhost:3000/health
 ```
 
-## 5) Auto-start (valfrjálst)
+## 5) Swagger skjölun
+```text
+http://localhost:3000/docs
+```
+
+## 6) Auto-start (valfrjálst)
 Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
 ```text
 %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
