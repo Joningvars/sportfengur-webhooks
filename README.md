@@ -7,8 +7,10 @@
 - Fylla inn:
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
-  - `EXCEL_PATH` (sjálfgefið `./raslistar.xlsx`)
+  - `EXCEL_PATH` (template/input, t.d. `./data/raslistar.xlsx`)
+  - `EXCEL_OUTPUT_PATH` (live/output, t.d. `./data/raslistar_live.xlsx`)
   - `PORT` (sjálfgefið 3000)
+  - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
 ## 2) Keyra forritið
 ### A) Með Node
@@ -35,12 +37,14 @@ Ngrok Hobbyist plan er nóg fyrir stöðuga slóð (ngrok-branded domain).
 ngrok.exe config add-authtoken YOUR_AUTHTOKEN
 ```
 
-2) Stöðug slóð (ngrok-branded domain):
+2) Búa til ngrok-branded domain í dashboard (t.d. `yourname.ngrok.app`)
+
+3) Ræsa tunnel með slóð:
 ```bat
-ngrok.exe http --domain=yourname.ngrok.app 3000
+ngrok.exe http --url=yourname.ngrok.app 3000
 ```
 
-3) (Valfrjálst) Keyra ngrok sem Windows þjónustu eða í Startup.
+4) (Valfrjálst) Keyra ngrok sem Windows þjónustu eða í Startup.
 
 ## 4) Heilsutékka
 ```text
@@ -57,3 +61,4 @@ Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
 - Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
+- `raslistar` er fyllt við `event_raslisti_birtur`, E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.

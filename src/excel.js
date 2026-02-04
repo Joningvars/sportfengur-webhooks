@@ -193,6 +193,29 @@ export async function updateStartingListSheet(startingList) {
     let worksheet = workbook.getWorksheet('raslistar');
     if (!worksheet) {
       worksheet = workbook.addWorksheet('raslistar');
+      worksheet.columns = [
+        { header: 'Nr.', key: 'Nr.', width: 6 },
+        { header: 'Holl', key: 'Holl', width: 6 },
+        { header: 'Hönd', key: 'Hönd', width: 6 },
+        { header: 'Knapi', key: 'Knapi', width: 24 },
+        { header: 'LiturRas', key: 'LiturRas', width: 14 },
+        { header: 'Félag knapa', key: 'Félag knapa', width: 18 },
+        { header: 'Hestur', key: 'Hestur', width: 28 },
+        { header: 'Litur', key: 'Litur', width: 20 },
+        { header: 'Aldur', key: 'Aldur', width: 6 },
+        { header: 'Félag eiganda', key: 'Félag eiganda', width: 18 },
+        { header: 'Eigandi', key: 'Eigandi', width: 22 },
+        { header: 'Faðir', key: 'Faðir', width: 28 },
+        { header: 'Móðir', key: 'Móðir', width: 28 },
+        { header: 'Lið', key: 'Lið', width: 10 },
+        { header: 'NafnBIG', key: 'NafnBIG', width: 28 },
+        { header: 'E1', key: 'E1', width: 8 },
+        { header: 'E2', key: 'E2', width: 8 },
+        { header: 'E3', key: 'E3', width: 8 },
+        { header: 'E4', key: 'E4', width: 8 },
+        { header: 'E5', key: 'E5', width: 8 },
+        { header: 'E6', key: 'E6', width: 8 },
+      ];
       worksheet.addRow([
         'Nr.',
         'Holl',
@@ -313,6 +336,7 @@ export async function updateResultsScores(results) {
       const judges = Array.isArray(result.einkunnir_domara)
         ? result.einkunnir_domara
         : [];
+      console.log('[einkunnir_domara]', trackNumber, judges);
       const scores = judges
         .slice(0, 5)
         .map((j) => parseJudgeScore(j?.domari_adaleinkunn));

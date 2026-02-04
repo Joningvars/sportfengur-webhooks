@@ -57,10 +57,9 @@ function normalizePayload(payload) {
     eventId: payload.eventId ?? payload.eventid ?? payload.event_id,
     classId: payload.classId ?? payload.classid ?? payload.class_id,
     competitionId:
-      payload.competitionId ??
-      payload.competitionid ??
-      payload.competition_id,
-    published: payload.published ?? payload.published_at ?? payload.is_published,
+      payload.competitionId ?? payload.competitionid ?? payload.competition_id,
+    published:
+      payload.published ?? payload.published_at ?? payload.is_published,
   };
 }
 
@@ -183,6 +182,8 @@ async function handleEventEinkunnSaeti(payload) {
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
   );
+  console.log('[einkunn_saeti] response', data);
+  console.log('[einkunn_saeti] einkunnir', data?.einkunnir_domara);
   const rows = (data?.einkunnir || []).map((item) => ({
     timestamp: new Date().toISOString(),
     eventId: payload.eventId,

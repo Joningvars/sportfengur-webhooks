@@ -10,6 +10,8 @@ export const openApiSpec = {
     '/event_einkunn_saeti': {
       post: {
         summary: 'Einkunn saeti webhook',
+        description:
+          'Triggers results fetch. E1-E5 are judge totals, E6 is keppandi_medaleinkunn.',
         requestBody: {
           required: true,
           content: {
@@ -106,6 +108,7 @@ export const openApiSpec = {
     '/event_raslisti_birtur': {
       post: {
         summary: 'Raslisti birtur webhook',
+        description: 'Triggers starting list fetch (cached per class/competition).',
         requestBody: {
           required: true,
           content: {
@@ -139,6 +142,7 @@ export const openApiSpec = {
     '/event_naesti_sprettur': {
       post: {
         summary: 'Naesti sprettur webhook',
+        description: 'Triggers starting list fetch (cached per class/competition).',
         requestBody: {
           required: true,
           content: {
