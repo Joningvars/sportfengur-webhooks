@@ -62,3 +62,12 @@ Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
 - `raslistar` er fyllt við `event_raslisti_birtur`, E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
+
+## Webhook slóðir
+```text
+https://eidfaxi.ngrok.app/event_raslisti_birtur
+https://eidfaxi.ngrok.app/event_naesti_sprettur
+https://eidfaxi.ngrok.app/event_keppendalisti_breyta
+https://eidfaxi.ngrok.app/event_keppnisgreinar
+https://eidfaxi.ngrok.app/event_einkunn_saeti
+```

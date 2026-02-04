@@ -5,7 +5,7 @@ export const openApiSpec = {
     version: '1.0.0',
     description: 'Webhook endpoints for SportFengur updates.',
   },
-  servers: [{ url: 'http://localhost:3000' }],
+  servers: [{ url: 'https://eidfaxi.ngrok.app' }],
   paths: {
     '/event_einkunn_saeti': {
       post: {
