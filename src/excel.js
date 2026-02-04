@@ -24,6 +24,41 @@ async function ensureWorkbook() {
     }
     const dir = path.dirname(EXCEL_PATH);
     await fs.mkdir(dir, { recursive: true });
+    const raslistar = workbook.addWorksheet('raslistar');
+    raslistar.addRow([
+      'Nr.',
+      'Holl',
+      'Hönd',
+      'Knapi',
+      'LiturRas',
+      'Félag knapa',
+      'Hestur',
+      'Litur',
+      'Aldur',
+      'Félag eiganda',
+      'Eigandi',
+      'Faðir',
+      'Móðir',
+      'Lið',
+      'NafnBIG',
+      'E1',
+      'E2',
+      'E3',
+      'E4',
+      'E5',
+      'E6',
+    ]);
+    const webhooks = workbook.addWorksheet('Webhooks');
+    webhooks.columns = [
+      { header: 'timestamp', key: 'timestamp', width: 24 },
+      { header: 'event', key: 'event', width: 28 },
+      { header: 'eventId', key: 'eventId', width: 14 },
+      { header: 'classId', key: 'classId', width: 14 },
+      { header: 'competitionId', key: 'competitionId', width: 16 },
+      { header: 'published', key: 'published', width: 12 },
+      { header: 'payload', key: 'payload', width: 80 },
+    ];
+    await writeWorkbookAtomic(workbook);
   }
 
   return workbook;

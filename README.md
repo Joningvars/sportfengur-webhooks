@@ -9,7 +9,6 @@
   - `EIDFAXI_PASSWORD`
   - `EXCEL_PATH` (sjálfgefið `./raslistar.xlsx`)
   - `PORT` (sjálfgefið 3000)
-  - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
 ## 2) Keyra forritið
 ### A) Með Node
@@ -28,39 +27,20 @@ Keyrið síðan:
 dist\sportfengur-webhooks.exe
 ```
 
-## 3) Cloudflare Tunnel (stöðug slóð, engin port forwarding)
-Setjið upp **cloudflared** á vélina og tengið við ykkar lén í Cloudflare.
+## 3) Ngrok (stöðug slóð, engin port forwarding)
+Ngrok Hobbyist plan er nóg fyrir stöðuga slóð (ngrok-branded domain).
 
-1) Innskráning:
+1) Setja upp ngrok og innskrá:
 ```bat
-cloudflared.exe tunnel login
+ngrok.exe config add-authtoken YOUR_AUTHTOKEN
 ```
 
-2) Búa til tunnel:
+2) Stöðug slóð (ngrok-branded domain):
 ```bat
-cloudflared.exe tunnel create sportfengur-webhooks
+ngrok.exe http --domain=yourname.ngrok.app 3000
 ```
 
-3) DNS leið (stöðug slóð):
-```bat
-cloudflared.exe tunnel route dns sportfengur-webhooks webhooks.yourdomain.com
-```
-
-4) Búa til `C:\cloudflared\config.yml`:
-```yaml
-tunnel: sportfengur-webhooks
-credentials-file: C:\Users\YOUR_USER\.cloudflared\YOUR_TUNNEL_ID.json
-
-ingress:
-  - hostname: webhooks.yourdomain.com
-    service: http://localhost:3000
-  - service: http_status:404
-```
-
-5) Ræsa tunnel:
-```bat
-cloudflared.exe tunnel run sportfengur-webhooks
-```
+3) (Valfrjálst) Keyra ngrok sem Windows þjónustu eða í Startup.
 
 ## 4) Heilsutékka
 ```text
@@ -74,6 +54,6 @@ Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
 ```
 
 ## Athugasemdir
-- Engin port forwarding þarf ef Cloudflare Tunnel er notað.
+- Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
