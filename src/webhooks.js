@@ -74,6 +74,10 @@ async function handleEventRaslisti(payload) {
     `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
   );
   const startingList = Array.isArray(data?.raslisti) ? data.raslisti : [];
+  console.log(
+    `[raslisti] ${classId}/${competitionId} count=${startingList.length}`,
+  );
+  console.log('[raslisti] response', data);
   await updateStartingListSheet(startingList);
 }
 

@@ -19,7 +19,11 @@ async function ensureWorkbook() {
   try {
     await workbook.xlsx.readFile(EXCEL_PATH);
   } catch (error) {
-    if (error.code !== 'ENOENT') {
+    const notFound =
+      error.code === 'ENOENT' ||
+      (typeof error.message === 'string' &&
+        error.message.includes('File not found'));
+    if (!notFound) {
       throw error;
     }
     const dir = path.dirname(EXCEL_PATH);
@@ -106,6 +110,23 @@ function getRowByValue(worksheet, col, value) {
   return null;
 }
 
+function getYearFromFaedingarnumer(value) {
+  if (!value || typeof value !== 'string') return null;
+  const match = value.match(/(\d{4})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear()) {
+    return null;
+  }
+  return year;
+}
+
+function calculateAldur(faedingarnumer) {
+  const year = getYearFromFaedingarnumer(faedingarnumer);
+  if (!year) return '';
+  return new Date().getFullYear() - year;
+}
+
 async function getHorseInfo(horseId) {
   if (!horseId && horseId !== 0) return null;
   if (horseInfoCache.has(horseId)) {
@@ -188,6 +209,10 @@ export async function updateStartingListSheet(startingList) {
       }
 
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || '';
+      const faedingarnumer = item.faedingarnumer ?? '';
+      const aldur = calculateAldur(faedingarnumer);
+      const riderName = item.knapi_fulltnafn ?? '';
+      const riderNameUpper = riderName ? riderName.toUpperCase() : '';
 
       const cells = {
         'Nr.': trackNumber,
@@ -196,12 +221,12 @@ export async function updateStartingListSheet(startingList) {
         Knapi: item.knapi_fulltnafn ?? '',
         LiturRas: item.rodun_litur ?? '',
         'Félag knapa': item.adildarfelag_knapa ?? '',
-        Hestur: item.hross_nafn ?? '',
+        Hestur: horseFullName,
         Litur: item.hross_litur ?? '',
-        Aldur: '',
+        Aldur: aldur,
         'Félag eiganda': item.adildarfelag_eiganda ?? '',
         Lið: '',
-        NafnBIG: horseFullName,
+        NafnBIG: riderNameUpper,
         E1: '',
         E2: '',
         E3: '',
@@ -231,6 +256,12 @@ export async function updateStartingListSheet(startingList) {
           if (ownerCol) row.getCell(ownerCol).value = horseInfo.eigandi ?? '';
           if (fatherCol) row.getCell(fatherCol).value = horseInfo.fadir_nafn ?? '';
           if (motherCol) row.getCell(motherCol).value = horseInfo.modir_nafn ?? '';
+          if (!row.getCell(headers.get('Aldur')).value) {
+            const horseAldur = calculateAldur(horseInfo.faedingarnumer ?? '');
+            if (headers.get('Aldur') && horseAldur !== '') {
+              row.getCell(headers.get('Aldur')).value = horseAldur;
+            }
+          }
         }
       }
     }
