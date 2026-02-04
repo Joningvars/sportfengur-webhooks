@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import fs from 'fs/promises';
 import path from 'path';
-import { EXCEL_PATH } from './config.js';
+import { EXCEL_PATH, EXCEL_OUTPUT_PATH } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
 
 let excelWriteQueue = Promise.resolve();
@@ -69,19 +69,21 @@ async function ensureWorkbook() {
 }
 
 async function writeWorkbookAtomic(workbook) {
-  const tempPath = `${EXCEL_PATH}.tmp`;
+  const tempPath = `${EXCEL_OUTPUT_PATH}.tmp`;
+  console.log(`[excel] writing ${EXCEL_OUTPUT_PATH}`);
   const buffer = await workbook.xlsx.writeBuffer();
   await fs.writeFile(tempPath, buffer);
   try {
-    await fs.rename(tempPath, EXCEL_PATH);
+    await fs.rename(tempPath, EXCEL_OUTPUT_PATH);
   } catch (error) {
     if (error.code === 'EPERM' || error.code === 'EEXIST') {
-      await fs.unlink(EXCEL_PATH).catch(() => {});
-      await fs.rename(tempPath, EXCEL_PATH);
+      await fs.unlink(EXCEL_OUTPUT_PATH).catch(() => {});
+      await fs.rename(tempPath, EXCEL_OUTPUT_PATH);
     } else {
       throw error;
     }
   }
+  console.log(`[excel] wrote ${EXCEL_OUTPUT_PATH}`);
 }
 
 function getHeaderMap(worksheet) {
@@ -137,6 +139,7 @@ async function getHorseInfo(horseId) {
   horseInfoCache.set(horseId, info);
   return info;
 }
+
 
 export async function appendWebhookRow(eventName, payload) {
   await enqueueExcelWrite(async () => {
@@ -211,14 +214,15 @@ export async function updateStartingListSheet(startingList) {
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || '';
       const faedingarnumer = item.faedingarnumer ?? '';
       const aldur = calculateAldur(faedingarnumer);
-      const riderName = item.knapi_fulltnafn ?? '';
+      const riderName =
+        item.knapi_fullt_nafn ?? item.knapi_fulltnafn ?? item.knapi_nafn ?? '';
       const riderNameUpper = riderName ? riderName.toUpperCase() : '';
 
       const cells = {
         'Nr.': trackNumber,
         Holl: item.holl ?? '',
         Hönd: item.hond ?? '',
-        Knapi: item.knapi_fulltnafn ?? '',
+        Knapi: riderName,
         LiturRas: item.rodun_litur ?? '',
         'Félag knapa': item.adildarfelag_knapa ?? '',
         Hestur: horseFullName,
@@ -253,18 +257,16 @@ export async function updateStartingListSheet(startingList) {
       if (needsHorseInfo && item.hross_numer != null) {
         const horseInfo = await getHorseInfo(item.hross_numer);
         if (horseInfo) {
-          if (ownerCol) row.getCell(ownerCol).value = horseInfo.eigandi ?? '';
-          if (fatherCol) row.getCell(fatherCol).value = horseInfo.fadir_nafn ?? '';
-          if (motherCol) row.getCell(motherCol).value = horseInfo.modir_nafn ?? '';
-          if (!row.getCell(headers.get('Aldur')).value) {
-            const horseAldur = calculateAldur(horseInfo.faedingarnumer ?? '');
-            if (headers.get('Aldur') && horseAldur !== '') {
-              row.getCell(headers.get('Aldur')).value = horseAldur;
-            }
-          }
+          if (ownerCol && !row.getCell(ownerCol).value)
+            row.getCell(ownerCol).value = horseInfo.eigandi ?? '';
+          if (fatherCol && !row.getCell(fatherCol).value)
+            row.getCell(fatherCol).value = horseInfo.fadir_nafn ?? '';
+          if (motherCol && !row.getCell(motherCol).value)
+            row.getCell(motherCol).value = horseInfo.modir_nafn ?? '';
         }
       }
-    }
+
+      }
 
     await writeWorkbookAtomic(workbook);
   });
