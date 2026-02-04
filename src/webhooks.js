@@ -8,6 +8,7 @@ import { apiGetWithRetry } from './sportfengur.js';
 import {
   appendWebhookRow,
   updateStartingListSheet,
+  updateResultsScores,
   writeDataSheet,
 } from './excel.js';
 
@@ -22,6 +23,7 @@ const EVENT_DEFINITIONS = {
 };
 
 const dedupeCache = new Map();
+const startingListCache = new Map();
 let lastWebhookAt = null;
 let lastWebhookProcessedAt = null;
 let lastError = null;
@@ -49,6 +51,19 @@ function validatePayload(eventName, payload) {
   return missing;
 }
 
+function normalizePayload(payload) {
+  return {
+    ...payload,
+    eventId: payload.eventId ?? payload.eventid ?? payload.event_id,
+    classId: payload.classId ?? payload.classid ?? payload.class_id,
+    competitionId:
+      payload.competitionId ??
+      payload.competitionid ??
+      payload.competition_id,
+    published: payload.published ?? payload.published_at ?? payload.is_published,
+  };
+}
+
 function pruneDedupeCache() {
   const now = Date.now();
   for (const [key, ts] of dedupeCache.entries()) {
@@ -70,6 +85,11 @@ function dedupeKey(eventName, payload) {
 
 async function handleEventRaslisti(payload) {
   const { classId, competitionId } = payload;
+  const cacheKey = `${classId}:${competitionId}`;
+  if (startingListCache.has(cacheKey)) {
+    console.log(`[raslisti] cache hit ${cacheKey}`);
+    return;
+  }
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
   );
@@ -79,6 +99,7 @@ async function handleEventRaslisti(payload) {
   );
   console.log('[raslisti] response', data);
   await updateStartingListSheet(startingList);
+  startingListCache.set(cacheKey, true);
 }
 
 async function handleEventKeppendalistiBreyta(payload) {
@@ -178,6 +199,7 @@ async function handleEventEinkunnSaeti(payload) {
     keppandi_einkunn_5_ds: item.keppandi_einkunn_5_ds ?? '',
     einkunnir_domara: JSON.stringify(item.einkunnir_domara ?? []),
   }));
+  await updateResultsScores(data?.einkunnir || []);
   await writeDataSheet(
     'einkunnir',
     [
@@ -205,7 +227,7 @@ async function handleWebhook(req, res, eventName) {
     return;
   }
 
-  const payload = req.body || {};
+  const payload = normalizePayload(req.body || {});
   const missing = validatePayload(eventName, payload);
   if (missing.length > 0) {
     res.status(400).send(`Missing required fields: ${missing.join(', ')}`);

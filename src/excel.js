@@ -17,7 +17,11 @@ function enqueueExcelWrite(task) {
 async function ensureWorkbook() {
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.readFile(EXCEL_PATH);
+    const primaryPath =
+      EXCEL_OUTPUT_PATH && EXCEL_OUTPUT_PATH !== EXCEL_PATH
+        ? EXCEL_OUTPUT_PATH
+        : EXCEL_PATH;
+    await workbook.xlsx.readFile(primaryPath);
   } catch (error) {
     const notFound =
       error.code === 'ENOENT' ||
@@ -129,6 +133,19 @@ function calculateAldur(faedingarnumer) {
   return new Date().getFullYear() - year;
 }
 
+function parseJudgeScore(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized =
+    typeof value === 'string' ? value.replace(',', '.').trim() : value;
+  const num = typeof normalized === 'number' ? normalized : Number(normalized);
+  return Number.isFinite(num) ? num : null;
+}
+
+function roundScore(value) {
+  if (value === null) return '';
+  return Math.round(value * 100) / 100;
+}
+
 async function getHorseInfo(horseId) {
   if (!horseId && horseId !== 0) return null;
   if (horseInfoCache.has(horseId)) {
@@ -223,7 +240,10 @@ export async function updateStartingListSheet(startingList) {
         Holl: item.holl ?? '',
         Hönd: item.hond ?? '',
         Knapi: riderName,
-        LiturRas: item.rodun_litur ?? '',
+        LiturRas:
+          item.rodun_litur_numer != null && item.rodun_litur
+            ? `${item.rodun_litur_numer} - ${item.rodun_litur}`
+            : item.rodun_litur ?? '',
         'Félag knapa': item.adildarfelag_knapa ?? '',
         Hestur: horseFullName,
         Litur: item.hross_litur ?? '',
@@ -231,12 +251,6 @@ export async function updateStartingListSheet(startingList) {
         'Félag eiganda': item.adildarfelag_eiganda ?? '',
         Lið: '',
         NafnBIG: riderNameUpper,
-        E1: '',
-        E2: '',
-        E3: '',
-        E4: '',
-        E5: '',
-        E6: '',
       };
 
       for (const [header, value] of Object.entries(cells)) {
@@ -267,6 +281,50 @@ export async function updateStartingListSheet(startingList) {
       }
 
       }
+
+    await writeWorkbookAtomic(workbook);
+  });
+}
+
+export async function updateResultsScores(results) {
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    const worksheet = workbook.getWorksheet('raslistar');
+    if (!worksheet) {
+      return;
+    }
+    const headers = getHeaderMap(worksheet);
+    const nrCol = headers.get('Nr.');
+    const e1Col = headers.get('E1');
+    const e2Col = headers.get('E2');
+    const e3Col = headers.get('E3');
+    const e4Col = headers.get('E4');
+    const e5Col = headers.get('E5');
+    const e6Col = headers.get('E6');
+    if (!nrCol || !e1Col || !e2Col || !e3Col || !e4Col || !e5Col || !e6Col) {
+      return;
+    }
+
+    for (const result of results) {
+      const trackNumber = result.vallarnumer ?? '';
+      const row = getRowByValue(worksheet, nrCol, trackNumber);
+      if (!row) continue;
+
+      const judges = Array.isArray(result.einkunnir_domara)
+        ? result.einkunnir_domara
+        : [];
+      const scores = judges
+        .slice(0, 5)
+        .map((j) => parseJudgeScore(j?.domari_adaleinkunn));
+      row.getCell(e1Col).value = roundScore(scores[0] ?? null);
+      row.getCell(e2Col).value = roundScore(scores[1] ?? null);
+      row.getCell(e3Col).value = roundScore(scores[2] ?? null);
+      row.getCell(e4Col).value = roundScore(scores[3] ?? null);
+      row.getCell(e5Col).value = roundScore(scores[4] ?? null);
+      row.getCell(e6Col).value = roundScore(
+        parseJudgeScore(result.keppandi_medaleinkunn),
+      );
+    }
 
     await writeWorkbookAtomic(workbook);
   });
