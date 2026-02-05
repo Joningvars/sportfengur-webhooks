@@ -30,8 +30,12 @@ async function ensureWorkbook() {
     if (!notFound) {
       throw error;
     }
-    const dir = path.dirname(EXCEL_PATH);
-    await fs.mkdir(dir, { recursive: true });
+    const inputDir = path.dirname(EXCEL_PATH);
+    const outputDir = path.dirname(EXCEL_OUTPUT_PATH);
+    await fs.mkdir(inputDir, { recursive: true });
+    if (outputDir && outputDir !== inputDir) {
+      await fs.mkdir(outputDir, { recursive: true });
+    }
     const raslistar = workbook.addWorksheet('raslistar');
     raslistar.addRow([
       'Nr.',
@@ -301,8 +305,6 @@ export async function updateStartingListSheet(startingList) {
           if (motherCol && !row.getCell(motherCol).value)
             row.getCell(motherCol).value = horseInfo.modir_nafn ?? '';
         }
-      }
-
       }
 
     await writeWorkbookAtomic(workbook);

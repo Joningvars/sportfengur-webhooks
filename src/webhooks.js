@@ -3,6 +3,7 @@ import {
   WEBHOOK_SECRET_REQUIRED,
   SPORTFENGUR_LOCALE,
   DEDUPE_TTL_MS,
+  DEBUG_LOGS,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
 import {
@@ -97,7 +98,9 @@ async function handleEventRaslisti(payload) {
   console.log(
     `[raslisti] ${classId}/${competitionId} count=${startingList.length}`,
   );
-  console.log('[raslisti] response', data);
+  if (DEBUG_LOGS) {
+    console.log('[raslisti] response', data);
+  }
   await updateStartingListSheet(startingList);
   startingListCache.set(cacheKey, true);
 }
@@ -183,8 +186,9 @@ async function handleEventEinkunnSaeti(payload) {
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
   );
-  console.log('[einkunn_saeti] response', data);
-  console.log('[einkunn_saeti] einkunnir', data?.einkunnir_domara);
+  if (DEBUG_LOGS) {
+    console.log('[einkunn_saeti] response', data);
+  }
   const rows = (data?.einkunnir || []).map((item) => ({
     timestamp: new Date().toISOString(),
     eventId: payload.eventId,
