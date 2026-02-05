@@ -27,6 +27,7 @@ const startingListCache = new Map();
 let lastWebhookAt = null;
 let lastWebhookProcessedAt = null;
 let lastError = null;
+let currentPayload = null;
 
 function requireWebhookSecret(req, res) {
   if (!WEBHOOK_SECRET_REQUIRED) {
@@ -302,6 +303,17 @@ export function registerHealthRoute(app) {
 export function registerTestRoute(app) {
   app.post('/webhooks/test', (req, res) => {
     console.log('[webhook] test', req.body);
+    res.send('Skeyti móttekið');
+  });
+}
+
+export function registerCurrentRoutes(app) {
+  app.get('/current', (req, res) => {
+    res.json(currentPayload ?? {});
+  });
+
+  app.post('/current', (req, res) => {
+    currentPayload = req.body || {};
     res.send('Skeyti móttekið');
   });
 }

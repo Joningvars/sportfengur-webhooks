@@ -196,5 +196,23 @@ export const openApiSpec = {
         responses: { 200: { description: 'OK' } },
       },
     },
+    '/current': {
+      get: {
+        summary: 'Get current JSON payload (wMix)',
+        responses: { 200: { description: 'OK' } },
+      },
+      post: {
+        summary: 'Set current JSON payload (wMix)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object' },
+            },
+          },
+        },
+        responses: { 200: { description: 'Skeyti motttekid' } },
+      },
+    },
   },
 };

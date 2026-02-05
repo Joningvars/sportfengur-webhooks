@@ -4,6 +4,7 @@ import {
   registerRootRoute,
   registerTestRoute,
   registerWebhookRoutes,
+  registerCurrentRoutes,
 } from './src/webhooks.js';
 import { registerDocs } from './src/docs.js';
 
@@ -15,6 +16,7 @@ registerRootRoute(app);
 registerWebhookRoutes(app);
 registerTestRoute(app);
 registerHealthRoute(app);
+registerCurrentRoutes(app);
 registerDocs(app);
 
 const port = process.env.PORT || 3000;

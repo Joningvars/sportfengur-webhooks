@@ -56,7 +56,11 @@ http://localhost:3000/health
 http://localhost:3000/docs
 ```
 
-## 6) Auto-start (valfrjálst)
+## 6) wMix /current JSON
+- `POST /current` setur inn nýjustu JSON gögn
+- `GET /current` skilar síðustu JSON gögnunum
+
+## 7) Auto-start (valfrjálst)
 Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
 ```text
 %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup

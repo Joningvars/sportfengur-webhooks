@@ -1,0 +1,16 @@
+Release Checklist (Windows)
+
+1) Build exe:
+   npm run build:win
+
+2) Prepare release zip containing:
+   - dist\sportfengur-webhooks.exe
+   - .env.example
+   - release\SETUP.txt
+
+3) Create GitHub Release and upload the zip.
+
+4) Send user:
+   - Download link
+   - Webhook URLs
+   - x-webhook-secret (if enabled)
