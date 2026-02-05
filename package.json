@@ -22,5 +22,11 @@
   },
   "devDependencies": {
     "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "scripts": [
+      "server.js",
+      "src/**/*.js"
+    ]
   }
 }
