@@ -125,7 +125,11 @@ function getYearFromFaedingarnumer(value) {
   const match = value.match(/(\d{4})/);
   if (!match) return null;
   const year = Number(match[1]);
-  if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear()) {
+  if (
+    !Number.isInteger(year) ||
+    year < 1900 ||
+    year > new Date().getFullYear()
+  ) {
     return null;
   }
   return year;
@@ -160,7 +164,6 @@ async function getHorseInfo(horseId) {
   horseInfoCache.set(horseId, info);
   return info;
 }
-
 
 export async function appendWebhookRow(eventName, payload) {
   await enqueueExcelWrite(async () => {
@@ -270,7 +273,7 @@ export async function updateStartingListSheet(startingList) {
         LiturRas:
           item.rodun_litur_numer != null && item.rodun_litur
             ? `${item.rodun_litur_numer} - ${item.rodun_litur}`
-            : item.rodun_litur ?? '',
+            : (item.rodun_litur ?? ''),
         'Félag knapa': item.adildarfelag_knapa ?? '',
         Hestur: horseFullName,
         Litur: item.hross_litur ?? '',
@@ -306,6 +309,7 @@ export async function updateStartingListSheet(startingList) {
             row.getCell(motherCol).value = horseInfo.modir_nafn ?? '';
         }
       }
+    }
 
     await writeWorkbookAtomic(workbook);
   });
