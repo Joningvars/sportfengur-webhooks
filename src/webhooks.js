@@ -322,6 +322,13 @@ export function registerCurrentRoutes(app) {
   });
 }
 
+export function registerCacheRoutes(app) {
+  app.post('/cache/raslisti/clear', (req, res) => {
+    startingListCache.clear();
+    res.send('Cache cleared');
+  });
+}
+
 export function registerRootRoute(app) {
   app.get('/', (req, res) => {
     res.redirect('/docs');

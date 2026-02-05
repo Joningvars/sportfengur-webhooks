@@ -94,21 +94,34 @@ async function writeWorkbookAtomic(workbook) {
   console.log(`[excel] wrote ${EXCEL_OUTPUT_PATH}`);
 }
 
-function getHeaderMap(worksheet) {
-  const headerRow = worksheet.getRow(1);
+function getHeaderInfo(worksheet) {
+  let bestRow = 1;
+  let bestCount = 0;
+  for (let i = 1; i <= Math.min(10, worksheet.rowCount || 10); i += 1) {
+    const row = worksheet.getRow(i);
+    let count = 0;
+    row.eachCell((cell) => {
+      if (cell.value) count += 1;
+    });
+    if (count > bestCount) {
+      bestCount = count;
+      bestRow = i;
+    }
+  }
+  const headerRow = worksheet.getRow(bestRow);
   const map = new Map();
   headerRow.eachCell((cell, col) => {
     if (cell.value) {
       map.set(cell.value.toString().trim(), col);
     }
   });
-  return map;
+  return { map, headerRow: bestRow };
 }
 
-function getRowByValue(worksheet, col, value) {
+function getRowByValue(worksheet, col, value, startRow = 2) {
   if (!value && value !== 0) return null;
   const last = worksheet.rowCount;
-  for (let i = 2; i <= last; i += 1) {
+  for (let i = startRow; i <= last; i += 1) {
     const cellValue = worksheet.getRow(i).getCell(col).value;
     if (
       cellValue === value ||
@@ -248,12 +261,15 @@ export async function updateStartingListSheet(startingList) {
       ]);
     }
 
-    const headers = getHeaderMap(worksheet);
+    const headerInfo = getHeaderInfo(worksheet);
+    const headers = headerInfo.map;
     const nrCol = headers.get('Nr.');
 
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? '';
-      let row = nrCol ? getRowByValue(worksheet, nrCol, trackNumber) : null;
+      let row = nrCol
+        ? getRowByValue(worksheet, nrCol, trackNumber, headerInfo.headerRow + 1)
+        : null;
       if (!row) {
         row = worksheet.addRow([]);
       }
@@ -322,7 +338,8 @@ export async function updateResultsScores(results) {
     if (!worksheet) {
       return;
     }
-    const headers = getHeaderMap(worksheet);
+    const headerInfo = getHeaderInfo(worksheet);
+    const headers = headerInfo.map;
     const nrCol = headers.get('Nr.');
     const e1Col = headers.get('E1');
     const e2Col = headers.get('E2');
@@ -336,7 +353,12 @@ export async function updateResultsScores(results) {
 
     for (const result of results) {
       const trackNumber = result.vallarnumer ?? '';
-      const row = getRowByValue(worksheet, nrCol, trackNumber);
+      const row = getRowByValue(
+        worksheet,
+        nrCol,
+        trackNumber,
+        headerInfo.headerRow + 1,
+      );
       if (!row) continue;
 
       const judges = Array.isArray(result.einkunnir_domara)
@@ -369,7 +391,7 @@ export async function writeDataSheet(sheetName, headers, rows) {
       worksheet.addRow(headers);
     }
 
-    const headerMap = getHeaderMap(worksheet);
+    const headerMap = getHeaderInfo(worksheet).map;
     for (const rowData of rows) {
       const row = worksheet.addRow([]);
       for (const [header, value] of Object.entries(rowData)) {
