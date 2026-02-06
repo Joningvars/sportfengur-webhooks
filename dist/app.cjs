@@ -88873,16 +88873,24 @@ async function updateStartingListSheet(startingList, sheetName = "raslistar", re
     ensureHeaders(worksheet, headerInfo, headersForSheet);
     const row1 = worksheet.getRow(1);
     const row2 = worksheet.getRow(2);
-    if (row1.getCell(1).value === "Nr." && row2.getCell(1).value === "Nr.") {
-      worksheet.spliceRows(2, 1);
+    if (row1.getCell(1).value === "Nr.") {
+      const row2HasData = row2.cellCount > 0 && row2.hasValues;
+      if (!row2HasData) {
+        worksheet.spliceRows(2, 1);
+      } else if (row2.getCell(1).value === "Nr.") {
+        worksheet.spliceRows(2, 1);
+      }
     }
     const nrCol = headers.get("Nr.");
+    if (worksheet.rowCount > headerInfo.headerRow) {
+      worksheet.spliceRows(
+        headerInfo.headerRow + 1,
+        worksheet.rowCount - headerInfo.headerRow
+      );
+    }
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? "";
-      let row = nrCol ? getRowByValue(worksheet, nrCol, trackNumber, headerInfo.headerRow + 1) : null;
-      if (!row) {
-        row = worksheet.addRow([]);
-      }
+      const row = worksheet.addRow([]);
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || "";
       const faedingarnumer = item.faedingarnumer ?? "";
       const aldur = calculateAldur(faedingarnumer);
