@@ -77693,15 +77693,15 @@ var require_generators = __commonJS({
         var stack = new Error().stack;
         return function() {
           var generator = generatorFunction.apply(this, arguments);
-          var spawn = new PromiseSpawn$(
+          var spawn2 = new PromiseSpawn$(
             void 0,
             void 0,
             yieldHandler,
             stack
           );
-          var ret2 = spawn.promise();
-          spawn._generator = generator;
-          spawn._promiseFulfilled(void 0);
+          var ret2 = spawn2.promise();
+          spawn2._generator = generator;
+          spawn2._promiseFulfilled(void 0);
           return ret2;
         };
       };
@@ -77716,9 +77716,9 @@ var require_generators = __commonJS({
         if (typeof generatorFunction !== "function") {
           return apiRejection("generatorFunction must be a function\n\n    See http://goo.gl/MqrFmX\n");
         }
-        var spawn = new PromiseSpawn(generatorFunction, this);
-        var ret2 = spawn.promise();
-        spawn._run(Promise2.spawn);
+        var spawn2 = new PromiseSpawn(generatorFunction, this);
+        var ret2 = spawn2.promise();
+        spawn2._run(Promise2.spawn);
         return ret2;
       };
     };
@@ -88467,6 +88467,7 @@ if (!DEBUG_MODE) {
 
 // server.js
 var import_express = __toESM(require_express2(), 1);
+var import_child_process = require("child_process");
 
 // src/sportfengur.js
 var authToken = "";
@@ -89005,6 +89006,28 @@ async function updateResultsScores(results, sheetName = "raslistar", removeSheet
               parseJudgeScore(detail?.einkunn)
             );
           }
+        }
+      }
+    }
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
+  });
+}
+async function writeDataSheet(sheetName, headers, rows) {
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    let worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.addRow(headers);
+    }
+    const headerMap = getHeaderInfo(worksheet).map;
+    for (const rowData of rows) {
+      const row = worksheet.addRow([]);
+      for (const [header, value] of Object.entries(rowData)) {
+        const col = headerMap.get(header);
+        if (col) {
+          row.getCell(col).value = value;
         }
       }
     }
@@ -89621,6 +89644,27 @@ app.listen(port, () => {
                                                                 `);
   console.log("SportFengur Webhooks er r\xE6st");
   console.log(`Vef\xFEj\xF3nn keyrir \xE1 porti ${port}`);
+  if (process.env.NGROK_AUTOSTART === "true") {
+    const cmd = process.env.NGROK_COMMAND || `ngrok http --url=eidfaxi.ngrok.app ${port}`;
+    console.log(`R\xE6si ngrok: ${cmd}`);
+    if (process.platform === "win32") {
+      (0, import_child_process.spawn)("cmd", ["/c", "start", '""', "cmd", "/k", cmd], {
+        stdio: "ignore",
+        windowsHide: true,
+        detached: true
+      }).unref();
+    } else if (process.platform === "darwin") {
+      (0, import_child_process.spawn)("open", ["-a", "Terminal", cmd], {
+        stdio: "ignore",
+        detached: true
+      }).unref();
+    } else {
+      (0, import_child_process.spawn)("x-terminal-emulator", ["-e", cmd], {
+        stdio: "ignore",
+        detached: true
+      }).unref();
+    }
+  }
 });
 /*! Bundled license information:
 

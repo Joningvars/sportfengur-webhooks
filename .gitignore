@@ -2,8 +2,6 @@ node_modules/
 .env
 .DS_Store
 data/
-dist/*
-!dist/sportfengur-webhooks.exe
 pkg
 pkg@5.8.1
 sportfengur-webhooks@1.0.0
