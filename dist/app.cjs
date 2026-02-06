@@ -32,6 +32,403 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// node_modules/dotenv/package.json
+var require_package = __commonJS({
+  "node_modules/dotenv/package.json"(exports2, module2) {
+    module2.exports = {
+      name: "dotenv",
+      version: "17.2.3",
+      description: "Loads environment variables from .env file",
+      main: "lib/main.js",
+      types: "lib/main.d.ts",
+      exports: {
+        ".": {
+          types: "./lib/main.d.ts",
+          require: "./lib/main.js",
+          default: "./lib/main.js"
+        },
+        "./config": "./config.js",
+        "./config.js": "./config.js",
+        "./lib/env-options": "./lib/env-options.js",
+        "./lib/env-options.js": "./lib/env-options.js",
+        "./lib/cli-options": "./lib/cli-options.js",
+        "./lib/cli-options.js": "./lib/cli-options.js",
+        "./package.json": "./package.json"
+      },
+      scripts: {
+        "dts-check": "tsc --project tests/types/tsconfig.json",
+        lint: "standard",
+        pretest: "npm run lint && npm run dts-check",
+        test: "tap run tests/**/*.js --allow-empty-coverage --disable-coverage --timeout=60000",
+        "test:coverage": "tap run tests/**/*.js --show-full-coverage --timeout=60000 --coverage-report=text --coverage-report=lcov",
+        prerelease: "npm test",
+        release: "standard-version"
+      },
+      repository: {
+        type: "git",
+        url: "git://github.com/motdotla/dotenv.git"
+      },
+      homepage: "https://github.com/motdotla/dotenv#readme",
+      funding: "https://dotenvx.com",
+      keywords: [
+        "dotenv",
+        "env",
+        ".env",
+        "environment",
+        "variables",
+        "config",
+        "settings"
+      ],
+      readmeFilename: "README.md",
+      license: "BSD-2-Clause",
+      devDependencies: {
+        "@types/node": "^18.11.3",
+        decache: "^4.6.2",
+        sinon: "^14.0.1",
+        standard: "^17.0.0",
+        "standard-version": "^9.5.0",
+        tap: "^19.2.0",
+        typescript: "^4.8.4"
+      },
+      engines: {
+        node: ">=12"
+      },
+      browser: {
+        fs: false
+      }
+    };
+  }
+});
+
+// node_modules/dotenv/lib/main.js
+var require_main = __commonJS({
+  "node_modules/dotenv/lib/main.js"(exports2, module2) {
+    var fs2 = require("fs");
+    var path2 = require("path");
+    var os = require("os");
+    var crypto4 = require("crypto");
+    var packageJson = require_package();
+    var version2 = packageJson.version;
+    var TIPS = [
+      "\u{1F510} encrypt with Dotenvx: https://dotenvx.com",
+      "\u{1F510} prevent committing .env to code: https://dotenvx.com/precommit",
+      "\u{1F510} prevent building .env in docker: https://dotenvx.com/prebuild",
+      "\u{1F4E1} add observability to secrets: https://dotenvx.com/ops",
+      "\u{1F465} sync secrets across teammates & machines: https://dotenvx.com/ops",
+      "\u{1F5C2}\uFE0F backup and recover secrets: https://dotenvx.com/ops",
+      "\u2705 audit secrets and track compliance: https://dotenvx.com/ops",
+      "\u{1F504} add secrets lifecycle management: https://dotenvx.com/ops",
+      "\u{1F511} add access controls to secrets: https://dotenvx.com/ops",
+      "\u{1F6E0}\uFE0F  run anywhere with `dotenvx run -- yourcommand`",
+      "\u2699\uFE0F  specify custom .env file path with { path: '/custom/path/.env' }",
+      "\u2699\uFE0F  enable debug logging with { debug: true }",
+      "\u2699\uFE0F  override existing env vars with { override: true }",
+      "\u2699\uFE0F  suppress all logs with { quiet: true }",
+      "\u2699\uFE0F  write to custom object with { processEnv: myObject }",
+      "\u2699\uFE0F  load multiple .env files with { path: ['.env.local', '.env'] }"
+    ];
+    function _getRandomTip() {
+      return TIPS[Math.floor(Math.random() * TIPS.length)];
+    }
+    function parseBoolean(value) {
+      if (typeof value === "string") {
+        return !["false", "0", "no", "off", ""].includes(value.toLowerCase());
+      }
+      return Boolean(value);
+    }
+    function supportsAnsi() {
+      return process.stdout.isTTY;
+    }
+    function dim(text) {
+      return supportsAnsi() ? `\x1B[2m${text}\x1B[0m` : text;
+    }
+    var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
+    function parse2(src) {
+      const obj2 = {};
+      let lines = src.toString();
+      lines = lines.replace(/\r\n?/mg, "\n");
+      let match;
+      while ((match = LINE.exec(lines)) != null) {
+        const key = match[1];
+        let value = match[2] || "";
+        value = value.trim();
+        const maybeQuote = value[0];
+        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
+        if (maybeQuote === '"') {
+          value = value.replace(/\\n/g, "\n");
+          value = value.replace(/\\r/g, "\r");
+        }
+        obj2[key] = value;
+      }
+      return obj2;
+    }
+    function _parseVault(options) {
+      options = options || {};
+      const vaultPath = _vaultPath(options);
+      options.path = vaultPath;
+      const result = DotenvModule.configDotenv(options);
+      if (!result.parsed) {
+        const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
+        err.code = "MISSING_DATA";
+        throw err;
+      }
+      const keys = _dotenvKey(options).split(",");
+      const length = keys.length;
+      let decrypted;
+      for (let i = 0; i < length; i++) {
+        try {
+          const key = keys[i].trim();
+          const attrs = _instructions(result, key);
+          decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
+          break;
+        } catch (error) {
+          if (i + 1 >= length) {
+            throw error;
+          }
+        }
+      }
+      return DotenvModule.parse(decrypted);
+    }
+    function _warn(message) {
+      console.error(`[dotenv@${version2}][WARN] ${message}`);
+    }
+    function _debug(message) {
+      console.log(`[dotenv@${version2}][DEBUG] ${message}`);
+    }
+    function _log(message) {
+      console.log(`[dotenv@${version2}] ${message}`);
+    }
+    function _dotenvKey(options) {
+      if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
+        return options.DOTENV_KEY;
+      }
+      if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
+        return process.env.DOTENV_KEY;
+      }
+      return "";
+    }
+    function _instructions(result, dotenvKey) {
+      let uri;
+      try {
+        uri = new URL(dotenvKey);
+      } catch (error) {
+        if (error.code === "ERR_INVALID_URL") {
+          const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        }
+        throw error;
+      }
+      const key = uri.password;
+      if (!key) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing key part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environment = uri.searchParams.get("environment");
+      if (!environment) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
+      const ciphertext = result.parsed[environmentKey];
+      if (!ciphertext) {
+        const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
+        err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
+        throw err;
+      }
+      return { ciphertext, key };
+    }
+    function _vaultPath(options) {
+      let possibleVaultPath = null;
+      if (options && options.path && options.path.length > 0) {
+        if (Array.isArray(options.path)) {
+          for (const filepath of options.path) {
+            if (fs2.existsSync(filepath)) {
+              possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
+            }
+          }
+        } else {
+          possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
+        }
+      } else {
+        possibleVaultPath = path2.resolve(process.cwd(), ".env.vault");
+      }
+      if (fs2.existsSync(possibleVaultPath)) {
+        return possibleVaultPath;
+      }
+      return null;
+    }
+    function _resolveHome(envPath) {
+      return envPath[0] === "~" ? path2.join(os.homedir(), envPath.slice(1)) : envPath;
+    }
+    function _configVault(options) {
+      const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
+      const quiet = parseBoolean(process.env.DOTENV_CONFIG_QUIET || options && options.quiet);
+      if (debug || !quiet) {
+        _log("Loading env from encrypted .env.vault");
+      }
+      const parsed = DotenvModule._parseVault(options);
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      DotenvModule.populate(processEnv, parsed, options);
+      return { parsed };
+    }
+    function configDotenv(options) {
+      const dotenvPath = path2.resolve(process.cwd(), ".env");
+      let encoding = "utf8";
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      let debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || options && options.debug);
+      let quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || options && options.quiet);
+      if (options && options.encoding) {
+        encoding = options.encoding;
+      } else {
+        if (debug) {
+          _debug("No encoding is specified. UTF-8 is used by default");
+        }
+      }
+      let optionPaths = [dotenvPath];
+      if (options && options.path) {
+        if (!Array.isArray(options.path)) {
+          optionPaths = [_resolveHome(options.path)];
+        } else {
+          optionPaths = [];
+          for (const filepath of options.path) {
+            optionPaths.push(_resolveHome(filepath));
+          }
+        }
+      }
+      let lastError2;
+      const parsedAll = {};
+      for (const path3 of optionPaths) {
+        try {
+          const parsed = DotenvModule.parse(fs2.readFileSync(path3, { encoding }));
+          DotenvModule.populate(parsedAll, parsed, options);
+        } catch (e) {
+          if (debug) {
+            _debug(`Failed to load ${path3} ${e.message}`);
+          }
+          lastError2 = e;
+        }
+      }
+      const populated = DotenvModule.populate(processEnv, parsedAll, options);
+      debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || debug);
+      quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || quiet);
+      if (debug || !quiet) {
+        const keysCount = Object.keys(populated).length;
+        const shortPaths = [];
+        for (const filePath of optionPaths) {
+          try {
+            const relative = path2.relative(process.cwd(), filePath);
+            shortPaths.push(relative);
+          } catch (e) {
+            if (debug) {
+              _debug(`Failed to load ${filePath} ${e.message}`);
+            }
+            lastError2 = e;
+          }
+        }
+        _log(`injecting env (${keysCount}) from ${shortPaths.join(",")} ${dim(`-- tip: ${_getRandomTip()}`)}`);
+      }
+      if (lastError2) {
+        return { parsed: parsedAll, error: lastError2 };
+      } else {
+        return { parsed: parsedAll };
+      }
+    }
+    function config(options) {
+      if (_dotenvKey(options).length === 0) {
+        return DotenvModule.configDotenv(options);
+      }
+      const vaultPath = _vaultPath(options);
+      if (!vaultPath) {
+        _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`);
+        return DotenvModule.configDotenv(options);
+      }
+      return DotenvModule._configVault(options);
+    }
+    function decrypt(encrypted, keyStr) {
+      const key = Buffer.from(keyStr.slice(-64), "hex");
+      let ciphertext = Buffer.from(encrypted, "base64");
+      const nonce = ciphertext.subarray(0, 12);
+      const authTag = ciphertext.subarray(-16);
+      ciphertext = ciphertext.subarray(12, -16);
+      try {
+        const aesgcm = crypto4.createDecipheriv("aes-256-gcm", key, nonce);
+        aesgcm.setAuthTag(authTag);
+        return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
+      } catch (error) {
+        const isRange = error instanceof RangeError;
+        const invalidKeyLength = error.message === "Invalid key length";
+        const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
+        if (isRange || invalidKeyLength) {
+          const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        } else if (decryptionFailed) {
+          const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
+          err.code = "DECRYPTION_FAILED";
+          throw err;
+        } else {
+          throw error;
+        }
+      }
+    }
+    function populate(processEnv, parsed, options = {}) {
+      const debug = Boolean(options && options.debug);
+      const override = Boolean(options && options.override);
+      const populated = {};
+      if (typeof parsed !== "object") {
+        const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
+        err.code = "OBJECT_REQUIRED";
+        throw err;
+      }
+      for (const key of Object.keys(parsed)) {
+        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+          if (override === true) {
+            processEnv[key] = parsed[key];
+            populated[key] = parsed[key];
+          }
+          if (debug) {
+            if (override === true) {
+              _debug(`"${key}" is already defined and WAS overwritten`);
+            } else {
+              _debug(`"${key}" is already defined and was NOT overwritten`);
+            }
+          }
+        } else {
+          processEnv[key] = parsed[key];
+          populated[key] = parsed[key];
+        }
+      }
+      return populated;
+    }
+    var DotenvModule = {
+      configDotenv,
+      _configVault,
+      _parseVault,
+      config,
+      decrypt,
+      parse: parse2,
+      populate
+    };
+    module2.exports.configDotenv = DotenvModule.configDotenv;
+    module2.exports._configVault = DotenvModule._configVault;
+    module2.exports._parseVault = DotenvModule._parseVault;
+    module2.exports.config = DotenvModule.config;
+    module2.exports.decrypt = DotenvModule.decrypt;
+    module2.exports.parse = DotenvModule.parse;
+    module2.exports.populate = DotenvModule.populate;
+    module2.exports = DotenvModule;
+  }
+});
+
 // node_modules/ms/index.js
 var require_ms = __commonJS({
   "node_modules/ms/index.js"(exports2, module2) {
@@ -23612,403 +24009,6 @@ var require_express2 = __commonJS({
   "node_modules/express/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_express();
-  }
-});
-
-// node_modules/dotenv/package.json
-var require_package = __commonJS({
-  "node_modules/dotenv/package.json"(exports2, module2) {
-    module2.exports = {
-      name: "dotenv",
-      version: "17.2.3",
-      description: "Loads environment variables from .env file",
-      main: "lib/main.js",
-      types: "lib/main.d.ts",
-      exports: {
-        ".": {
-          types: "./lib/main.d.ts",
-          require: "./lib/main.js",
-          default: "./lib/main.js"
-        },
-        "./config": "./config.js",
-        "./config.js": "./config.js",
-        "./lib/env-options": "./lib/env-options.js",
-        "./lib/env-options.js": "./lib/env-options.js",
-        "./lib/cli-options": "./lib/cli-options.js",
-        "./lib/cli-options.js": "./lib/cli-options.js",
-        "./package.json": "./package.json"
-      },
-      scripts: {
-        "dts-check": "tsc --project tests/types/tsconfig.json",
-        lint: "standard",
-        pretest: "npm run lint && npm run dts-check",
-        test: "tap run tests/**/*.js --allow-empty-coverage --disable-coverage --timeout=60000",
-        "test:coverage": "tap run tests/**/*.js --show-full-coverage --timeout=60000 --coverage-report=text --coverage-report=lcov",
-        prerelease: "npm test",
-        release: "standard-version"
-      },
-      repository: {
-        type: "git",
-        url: "git://github.com/motdotla/dotenv.git"
-      },
-      homepage: "https://github.com/motdotla/dotenv#readme",
-      funding: "https://dotenvx.com",
-      keywords: [
-        "dotenv",
-        "env",
-        ".env",
-        "environment",
-        "variables",
-        "config",
-        "settings"
-      ],
-      readmeFilename: "README.md",
-      license: "BSD-2-Clause",
-      devDependencies: {
-        "@types/node": "^18.11.3",
-        decache: "^4.6.2",
-        sinon: "^14.0.1",
-        standard: "^17.0.0",
-        "standard-version": "^9.5.0",
-        tap: "^19.2.0",
-        typescript: "^4.8.4"
-      },
-      engines: {
-        node: ">=12"
-      },
-      browser: {
-        fs: false
-      }
-    };
-  }
-});
-
-// node_modules/dotenv/lib/main.js
-var require_main = __commonJS({
-  "node_modules/dotenv/lib/main.js"(exports2, module2) {
-    var fs2 = require("fs");
-    var path2 = require("path");
-    var os = require("os");
-    var crypto4 = require("crypto");
-    var packageJson = require_package();
-    var version2 = packageJson.version;
-    var TIPS = [
-      "\u{1F510} encrypt with Dotenvx: https://dotenvx.com",
-      "\u{1F510} prevent committing .env to code: https://dotenvx.com/precommit",
-      "\u{1F510} prevent building .env in docker: https://dotenvx.com/prebuild",
-      "\u{1F4E1} add observability to secrets: https://dotenvx.com/ops",
-      "\u{1F465} sync secrets across teammates & machines: https://dotenvx.com/ops",
-      "\u{1F5C2}\uFE0F backup and recover secrets: https://dotenvx.com/ops",
-      "\u2705 audit secrets and track compliance: https://dotenvx.com/ops",
-      "\u{1F504} add secrets lifecycle management: https://dotenvx.com/ops",
-      "\u{1F511} add access controls to secrets: https://dotenvx.com/ops",
-      "\u{1F6E0}\uFE0F  run anywhere with `dotenvx run -- yourcommand`",
-      "\u2699\uFE0F  specify custom .env file path with { path: '/custom/path/.env' }",
-      "\u2699\uFE0F  enable debug logging with { debug: true }",
-      "\u2699\uFE0F  override existing env vars with { override: true }",
-      "\u2699\uFE0F  suppress all logs with { quiet: true }",
-      "\u2699\uFE0F  write to custom object with { processEnv: myObject }",
-      "\u2699\uFE0F  load multiple .env files with { path: ['.env.local', '.env'] }"
-    ];
-    function _getRandomTip() {
-      return TIPS[Math.floor(Math.random() * TIPS.length)];
-    }
-    function parseBoolean(value) {
-      if (typeof value === "string") {
-        return !["false", "0", "no", "off", ""].includes(value.toLowerCase());
-      }
-      return Boolean(value);
-    }
-    function supportsAnsi() {
-      return process.stdout.isTTY;
-    }
-    function dim(text) {
-      return supportsAnsi() ? `\x1B[2m${text}\x1B[0m` : text;
-    }
-    var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
-    function parse2(src) {
-      const obj2 = {};
-      let lines = src.toString();
-      lines = lines.replace(/\r\n?/mg, "\n");
-      let match;
-      while ((match = LINE.exec(lines)) != null) {
-        const key = match[1];
-        let value = match[2] || "";
-        value = value.trim();
-        const maybeQuote = value[0];
-        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
-        if (maybeQuote === '"') {
-          value = value.replace(/\\n/g, "\n");
-          value = value.replace(/\\r/g, "\r");
-        }
-        obj2[key] = value;
-      }
-      return obj2;
-    }
-    function _parseVault(options) {
-      options = options || {};
-      const vaultPath = _vaultPath(options);
-      options.path = vaultPath;
-      const result = DotenvModule.configDotenv(options);
-      if (!result.parsed) {
-        const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
-        err.code = "MISSING_DATA";
-        throw err;
-      }
-      const keys = _dotenvKey(options).split(",");
-      const length = keys.length;
-      let decrypted;
-      for (let i = 0; i < length; i++) {
-        try {
-          const key = keys[i].trim();
-          const attrs = _instructions(result, key);
-          decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
-          break;
-        } catch (error) {
-          if (i + 1 >= length) {
-            throw error;
-          }
-        }
-      }
-      return DotenvModule.parse(decrypted);
-    }
-    function _warn(message) {
-      console.error(`[dotenv@${version2}][WARN] ${message}`);
-    }
-    function _debug(message) {
-      console.log(`[dotenv@${version2}][DEBUG] ${message}`);
-    }
-    function _log(message) {
-      console.log(`[dotenv@${version2}] ${message}`);
-    }
-    function _dotenvKey(options) {
-      if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
-        return options.DOTENV_KEY;
-      }
-      if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
-        return process.env.DOTENV_KEY;
-      }
-      return "";
-    }
-    function _instructions(result, dotenvKey) {
-      let uri;
-      try {
-        uri = new URL(dotenvKey);
-      } catch (error) {
-        if (error.code === "ERR_INVALID_URL") {
-          const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
-          err.code = "INVALID_DOTENV_KEY";
-          throw err;
-        }
-        throw error;
-      }
-      const key = uri.password;
-      if (!key) {
-        const err = new Error("INVALID_DOTENV_KEY: Missing key part");
-        err.code = "INVALID_DOTENV_KEY";
-        throw err;
-      }
-      const environment = uri.searchParams.get("environment");
-      if (!environment) {
-        const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
-        err.code = "INVALID_DOTENV_KEY";
-        throw err;
-      }
-      const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
-      const ciphertext = result.parsed[environmentKey];
-      if (!ciphertext) {
-        const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
-        err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
-        throw err;
-      }
-      return { ciphertext, key };
-    }
-    function _vaultPath(options) {
-      let possibleVaultPath = null;
-      if (options && options.path && options.path.length > 0) {
-        if (Array.isArray(options.path)) {
-          for (const filepath of options.path) {
-            if (fs2.existsSync(filepath)) {
-              possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
-            }
-          }
-        } else {
-          possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
-        }
-      } else {
-        possibleVaultPath = path2.resolve(process.cwd(), ".env.vault");
-      }
-      if (fs2.existsSync(possibleVaultPath)) {
-        return possibleVaultPath;
-      }
-      return null;
-    }
-    function _resolveHome(envPath) {
-      return envPath[0] === "~" ? path2.join(os.homedir(), envPath.slice(1)) : envPath;
-    }
-    function _configVault(options) {
-      const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
-      const quiet = parseBoolean(process.env.DOTENV_CONFIG_QUIET || options && options.quiet);
-      if (debug || !quiet) {
-        _log("Loading env from encrypted .env.vault");
-      }
-      const parsed = DotenvModule._parseVault(options);
-      let processEnv = process.env;
-      if (options && options.processEnv != null) {
-        processEnv = options.processEnv;
-      }
-      DotenvModule.populate(processEnv, parsed, options);
-      return { parsed };
-    }
-    function configDotenv(options) {
-      const dotenvPath = path2.resolve(process.cwd(), ".env");
-      let encoding = "utf8";
-      let processEnv = process.env;
-      if (options && options.processEnv != null) {
-        processEnv = options.processEnv;
-      }
-      let debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || options && options.debug);
-      let quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || options && options.quiet);
-      if (options && options.encoding) {
-        encoding = options.encoding;
-      } else {
-        if (debug) {
-          _debug("No encoding is specified. UTF-8 is used by default");
-        }
-      }
-      let optionPaths = [dotenvPath];
-      if (options && options.path) {
-        if (!Array.isArray(options.path)) {
-          optionPaths = [_resolveHome(options.path)];
-        } else {
-          optionPaths = [];
-          for (const filepath of options.path) {
-            optionPaths.push(_resolveHome(filepath));
-          }
-        }
-      }
-      let lastError2;
-      const parsedAll = {};
-      for (const path3 of optionPaths) {
-        try {
-          const parsed = DotenvModule.parse(fs2.readFileSync(path3, { encoding }));
-          DotenvModule.populate(parsedAll, parsed, options);
-        } catch (e) {
-          if (debug) {
-            _debug(`Failed to load ${path3} ${e.message}`);
-          }
-          lastError2 = e;
-        }
-      }
-      const populated = DotenvModule.populate(processEnv, parsedAll, options);
-      debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || debug);
-      quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || quiet);
-      if (debug || !quiet) {
-        const keysCount = Object.keys(populated).length;
-        const shortPaths = [];
-        for (const filePath of optionPaths) {
-          try {
-            const relative = path2.relative(process.cwd(), filePath);
-            shortPaths.push(relative);
-          } catch (e) {
-            if (debug) {
-              _debug(`Failed to load ${filePath} ${e.message}`);
-            }
-            lastError2 = e;
-          }
-        }
-        _log(`injecting env (${keysCount}) from ${shortPaths.join(",")} ${dim(`-- tip: ${_getRandomTip()}`)}`);
-      }
-      if (lastError2) {
-        return { parsed: parsedAll, error: lastError2 };
-      } else {
-        return { parsed: parsedAll };
-      }
-    }
-    function config(options) {
-      if (_dotenvKey(options).length === 0) {
-        return DotenvModule.configDotenv(options);
-      }
-      const vaultPath = _vaultPath(options);
-      if (!vaultPath) {
-        _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`);
-        return DotenvModule.configDotenv(options);
-      }
-      return DotenvModule._configVault(options);
-    }
-    function decrypt(encrypted, keyStr) {
-      const key = Buffer.from(keyStr.slice(-64), "hex");
-      let ciphertext = Buffer.from(encrypted, "base64");
-      const nonce = ciphertext.subarray(0, 12);
-      const authTag = ciphertext.subarray(-16);
-      ciphertext = ciphertext.subarray(12, -16);
-      try {
-        const aesgcm = crypto4.createDecipheriv("aes-256-gcm", key, nonce);
-        aesgcm.setAuthTag(authTag);
-        return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
-      } catch (error) {
-        const isRange = error instanceof RangeError;
-        const invalidKeyLength = error.message === "Invalid key length";
-        const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
-        if (isRange || invalidKeyLength) {
-          const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
-          err.code = "INVALID_DOTENV_KEY";
-          throw err;
-        } else if (decryptionFailed) {
-          const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
-          err.code = "DECRYPTION_FAILED";
-          throw err;
-        } else {
-          throw error;
-        }
-      }
-    }
-    function populate(processEnv, parsed, options = {}) {
-      const debug = Boolean(options && options.debug);
-      const override = Boolean(options && options.override);
-      const populated = {};
-      if (typeof parsed !== "object") {
-        const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
-        err.code = "OBJECT_REQUIRED";
-        throw err;
-      }
-      for (const key of Object.keys(parsed)) {
-        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
-          if (override === true) {
-            processEnv[key] = parsed[key];
-            populated[key] = parsed[key];
-          }
-          if (debug) {
-            if (override === true) {
-              _debug(`"${key}" is already defined and WAS overwritten`);
-            } else {
-              _debug(`"${key}" is already defined and was NOT overwritten`);
-            }
-          }
-        } else {
-          processEnv[key] = parsed[key];
-          populated[key] = parsed[key];
-        }
-      }
-      return populated;
-    }
-    var DotenvModule = {
-      configDotenv,
-      _configVault,
-      _parseVault,
-      config,
-      decrypt,
-      parse: parse2,
-      populate
-    };
-    module2.exports.configDotenv = DotenvModule.configDotenv;
-    module2.exports._configVault = DotenvModule._configVault;
-    module2.exports._parseVault = DotenvModule._parseVault;
-    module2.exports.config = DotenvModule.config;
-    module2.exports.decrypt = DotenvModule.decrypt;
-    module2.exports.parse = DotenvModule.parse;
-    module2.exports.populate = DotenvModule.populate;
-    module2.exports = DotenvModule;
   }
 });
 
@@ -88421,9 +88421,6 @@ window.onload = function() {
   }
 });
 
-// server.js
-var import_express = __toESM(require_express2(), 1);
-
 // src/config.js
 var import_dotenv = __toESM(require_main(), 1);
 import_dotenv.default.config();
@@ -88441,7 +88438,35 @@ var MIN_FETCH_INTERVAL_MS = Number(
 );
 var FETCH_MAX_RETRIES = Number(process.env.FETCH_MAX_RETRIES || 3);
 var FETCH_RETRY_BASE_MS = Number(process.env.FETCH_RETRY_BASE_MS || 750);
-var DEBUG_LOGS = process.env.DEBUG_LOGS === "true";
+var DEBUG_MODE = process.env.DEBUG_MODE === "true";
+var DEBUG_LOGS = DEBUG_MODE;
+
+// src/logger.js
+function sanitizeArgs(args) {
+  return args.map((arg) => {
+    if (arg instanceof Error) {
+      return arg.message || "Error";
+    }
+    const type = typeof arg;
+    if (type === "string" || type === "number" || type === "boolean") {
+      return arg;
+    }
+    return "[object]";
+  });
+}
+if (!DEBUG_MODE) {
+  const baseLog = console.log.bind(console);
+  const baseInfo = console.info.bind(console);
+  const baseWarn = console.warn.bind(console);
+  const baseError = console.error.bind(console);
+  console.log = (...args) => baseLog(...sanitizeArgs(args));
+  console.info = (...args) => baseInfo(...sanitizeArgs(args));
+  console.warn = (...args) => baseWarn(...sanitizeArgs(args));
+  console.error = (...args) => baseError(...sanitizeArgs(args));
+}
+
+// server.js
+var import_express = __toESM(require_express2(), 1);
 
 // src/sportfengur.js
 var authToken = "";
@@ -88537,7 +88562,6 @@ var import_exceljs = __toESM(require_excel(), 1);
 var import_promises = __toESM(require("fs/promises"), 1);
 var import_path = __toESM(require("path"), 1);
 var excelWriteQueue = Promise.resolve();
-var horseInfoCache = /* @__PURE__ */ new Map();
 function enqueueExcelWrite(task) {
   excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
     console.error("Excel write failed:", error);
@@ -88547,8 +88571,17 @@ function enqueueExcelWrite(task) {
 async function ensureWorkbook() {
   const workbook = new import_exceljs.default.Workbook();
   try {
-    const primaryPath = EXCEL_OUTPUT_PATH && EXCEL_OUTPUT_PATH !== EXCEL_PATH ? EXCEL_OUTPUT_PATH : EXCEL_PATH;
-    await workbook.xlsx.readFile(primaryPath);
+    const outputPath = EXCEL_OUTPUT_PATH && EXCEL_OUTPUT_PATH !== EXCEL_PATH ? EXCEL_OUTPUT_PATH : null;
+    if (outputPath) {
+      try {
+        await import_promises.default.access(outputPath);
+        await workbook.xlsx.readFile(outputPath);
+        return workbook;
+      } catch {
+      }
+    }
+    await import_promises.default.access(EXCEL_PATH);
+    await workbook.xlsx.readFile(EXCEL_PATH);
   } catch (error) {
     const notFound = error.code === "ENOENT" || typeof error.message === "string" && error.message.includes("File not found");
     if (!notFound) {
@@ -88560,30 +88593,6 @@ async function ensureWorkbook() {
     if (outputDir && outputDir !== inputDir) {
       await import_promises.default.mkdir(outputDir, { recursive: true });
     }
-    const raslistar = workbook.addWorksheet("raslistar");
-    raslistar.addRow([
-      "Nr.",
-      "Holl",
-      "H\xF6nd",
-      "Knapi",
-      "LiturRas",
-      "F\xE9lag knapa",
-      "Hestur",
-      "Litur",
-      "Aldur",
-      "F\xE9lag eiganda",
-      "Eigandi",
-      "Fa\xF0ir",
-      "M\xF3\xF0ir",
-      "Li\xF0",
-      "NafnBIG",
-      "E1",
-      "E2",
-      "E3",
-      "E4",
-      "E5",
-      "E6"
-    ]);
     const webhooks = workbook.addWorksheet("Webhooks");
     webhooks.columns = [
       { header: "timestamp", key: "timestamp", width: 24 },
@@ -88594,13 +88603,21 @@ async function ensureWorkbook() {
       { header: "published", key: "published", width: 12 },
       { header: "payload", key: "payload", width: 80 }
     ];
-    await writeWorkbookAtomic(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   }
   return workbook;
 }
-async function writeWorkbookAtomic(workbook) {
+async function writeWorkbookAtomic(workbook, options = {}) {
+  const { log = false } = options;
   const tempPath = `${EXCEL_OUTPUT_PATH}.tmp`;
-  console.log(`[excel] writing ${EXCEL_OUTPUT_PATH}`);
+  const colorYellow = "\x1B[33m";
+  const colorGreen = "\x1B[32m";
+  const colorReset = "\x1B[0m";
+  if (log) {
+    console.log(
+      `${colorYellow}\xDEa\xF0 er veri\xF0 a\xF0 skrifa \xED excel file'inn. Haldi\xF0 \xED hestana!${colorReset}`
+    );
+  }
   const buffer = await workbook.xlsx.writeBuffer();
   await import_promises.default.writeFile(tempPath, buffer);
   try {
@@ -88614,22 +88631,85 @@ async function writeWorkbookAtomic(workbook) {
       throw error;
     }
   }
-  console.log(`[excel] wrote ${EXCEL_OUTPUT_PATH}`);
+  if (log) {
+    console.log(`${colorGreen}B\xFAi\xF0 a\xF0 skrifa${colorReset}`);
+  }
 }
-function getHeaderMap(worksheet) {
-  const headerRow = worksheet.getRow(1);
+function getHeaderInfo(worksheet) {
+  let bestRow = 1;
+  let bestCount = 0;
+  for (let i = 1; i <= Math.min(10, worksheet.rowCount || 10); i += 1) {
+    const row = worksheet.getRow(i);
+    let count = 0;
+    row.eachCell((cell) => {
+      if (cell.value) count += 1;
+    });
+    if (count > bestCount) {
+      bestCount = count;
+      bestRow = i;
+    }
+  }
+  const headerRow = worksheet.getRow(bestRow);
   const map = /* @__PURE__ */ new Map();
   headerRow.eachCell((cell, col) => {
     if (cell.value) {
       map.set(cell.value.toString().trim(), col);
     }
   });
-  return map;
+  return { map, headerRow: bestRow };
 }
-function getRowByValue(worksheet, col, value) {
+var PREFERRED_SHEET_ORDER = ["Forkeppni", "B-\xFArslit", "A-\xFArslit"];
+function reorderWorkbookSheets(workbook) {
+  if (!Array.isArray(workbook._worksheets)) return;
+  const sheets = workbook.worksheets;
+  const byName = new Map(sheets.map((ws) => [ws.name.toLowerCase(), ws]));
+  const ordered = [];
+  for (const name of PREFERRED_SHEET_ORDER) {
+    const ws = byName.get(name.toLowerCase());
+    if (ws) ordered.push(ws);
+  }
+  for (const ws of sheets) {
+    if (!ordered.includes(ws) && ws.name !== "Webhooks") {
+      ordered.push(ws);
+    }
+  }
+  const webhooks = workbook.getWorksheet("Webhooks");
+  if (webhooks) ordered.push(webhooks);
+  workbook._worksheets = [null, ...ordered];
+  ordered.forEach((ws, i) => {
+    ws.id = i + 1;
+  });
+}
+function removeWorksheetIfExists(workbook, sheetName) {
+  const sheet = workbook.getWorksheet(sheetName);
+  if (sheet) {
+    workbook.removeWorksheet(sheet.id);
+  }
+}
+async function removeSheet(sheetName) {
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    removeWorksheetIfExists(workbook, sheetName);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
+  });
+}
+function ensureHeaders(worksheet, headerInfo, headersToEnsure, width = 8) {
+  const headerRow = worksheet.getRow(headerInfo.headerRow);
+  let lastCol = headerRow.cellCount || headerRow.actualCellCount || 0;
+  for (const header of headersToEnsure) {
+    if (!headerInfo.map.has(header)) {
+      lastCol += 1;
+      headerRow.getCell(lastCol).value = header;
+      worksheet.getColumn(lastCol).width = width;
+      headerInfo.map.set(header, lastCol);
+    }
+  }
+}
+function getRowByValue(worksheet, col, value, startRow = 2) {
   if (!value && value !== 0) return null;
   const last = worksheet.rowCount;
-  for (let i = 2; i <= last; i += 1) {
+  for (let i = startRow; i <= last; i += 1) {
     const cellValue = worksheet.getRow(i).getCell(col).value;
     if (cellValue === value || cellValue != null && cellValue.toString() === value.toString()) {
       return worksheet.getRow(i);
@@ -88662,15 +88742,17 @@ function roundScore(value) {
   if (value === null) return "";
   return Math.round(value * 100) / 100;
 }
-async function getHorseInfo(horseId) {
-  if (!horseId && horseId !== 0) return null;
-  if (horseInfoCache.has(horseId)) {
-    return horseInfoCache.get(horseId);
-  }
-  const data = await apiGetWithRetry(`/horseinfo/${horseId}`);
-  const info = Array.isArray(data?.res) ? data.res[0] : null;
-  horseInfoCache.set(horseId, info);
-  return info;
+function getGangtegundAbbr(value) {
+  if (!value) return "";
+  const raw = value.toString().trim().toLowerCase();
+  if (raw.includes("t\xF6lt frj\xE1ls hra\xF0i")) return "TFH";
+  if (raw.includes("h\xE6gt t\xF6lt")) return "HT";
+  if (raw.includes("t\xF6lt me\xF0 slakan taum")) return "TST";
+  if (raw.includes("brokk")) return "BR";
+  if (raw.includes("fet")) return "FE";
+  if (raw.includes("st\xF6kk")) return "ST";
+  if (raw.includes("greitt")) return "GR";
+  return "";
 }
 async function appendWebhookRow(eventName, payload) {
   await enqueueExcelWrite(async () => {
@@ -88678,86 +88760,125 @@ async function appendWebhookRow(eventName, payload) {
     let worksheet = workbook.getWorksheet("Webhooks");
     if (!worksheet) {
       worksheet = workbook.addWorksheet("Webhooks");
-      worksheet.columns = [
-        { header: "timestamp", key: "timestamp", width: 24 },
-        { header: "event", key: "event", width: 28 },
-        { header: "eventId", key: "eventId", width: 14 },
-        { header: "classId", key: "classId", width: 14 },
-        { header: "competitionId", key: "competitionId", width: 16 },
-        { header: "published", key: "published", width: 12 },
-        { header: "payload", key: "payload", width: 80 }
-      ];
+      worksheet.addRow([
+        "timestamp",
+        "event",
+        "eventId",
+        "classId",
+        "competitionId",
+        "published",
+        "payload"
+      ]);
+      worksheet.getColumn(1).width = 24;
+      worksheet.getColumn(2).width = 28;
+      worksheet.getColumn(3).width = 14;
+      worksheet.getColumn(4).width = 14;
+      worksheet.getColumn(5).width = 16;
+      worksheet.getColumn(6).width = 12;
+      worksheet.getColumn(7).width = 80;
     }
-    worksheet.addRow({
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      event: eventName,
-      eventId: payload.eventId ?? "",
-      classId: payload.classId ?? "",
-      competitionId: payload.competitionId ?? "",
-      published: payload.published ?? "",
-      payload: JSON.stringify(payload)
-    });
-    await writeWorkbookAtomic(workbook);
+    const headerInfo = getHeaderInfo(worksheet);
+    ensureHeaders(worksheet, headerInfo, [
+      "timestamp",
+      "event",
+      "eventId",
+      "classId",
+      "competitionId",
+      "published",
+      "payload"
+    ], 16);
+    const row = worksheet.addRow([]);
+    const set = (header, value) => {
+      const col = headerInfo.map.get(header);
+      if (col) row.getCell(col).value = value;
+    };
+    set("timestamp", (/* @__PURE__ */ new Date()).toISOString());
+    set("event", eventName);
+    set("eventId", payload.eventId ?? "");
+    set("classId", payload.classId ?? "");
+    set("competitionId", payload.competitionId ?? "");
+    set("published", payload.published ?? "");
+    set("payload", JSON.stringify(payload));
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
-async function updateStartingListSheet(startingList) {
+async function updateStartingListSheet(startingList, sheetName = "raslistar", removeSheets = []) {
   await enqueueExcelWrite(async () => {
     const workbook = await ensureWorkbook();
-    let worksheet = workbook.getWorksheet("raslistar");
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet("raslistar");
-      worksheet.columns = [
-        { header: "Nr.", key: "Nr.", width: 6 },
-        { header: "Holl", key: "Holl", width: 6 },
-        { header: "H\xF6nd", key: "H\xF6nd", width: 6 },
-        { header: "Knapi", key: "Knapi", width: 24 },
-        { header: "LiturRas", key: "LiturRas", width: 14 },
-        { header: "F\xE9lag knapa", key: "F\xE9lag knapa", width: 18 },
-        { header: "Hestur", key: "Hestur", width: 28 },
-        { header: "Litur", key: "Litur", width: 20 },
-        { header: "Aldur", key: "Aldur", width: 6 },
-        { header: "F\xE9lag eiganda", key: "F\xE9lag eiganda", width: 18 },
-        { header: "Eigandi", key: "Eigandi", width: 22 },
-        { header: "Fa\xF0ir", key: "Fa\xF0ir", width: 28 },
-        { header: "M\xF3\xF0ir", key: "M\xF3\xF0ir", width: 28 },
-        { header: "Li\xF0", key: "Li\xF0", width: 10 },
-        { header: "NafnBIG", key: "NafnBIG", width: 28 },
-        { header: "E1", key: "E1", width: 8 },
-        { header: "E2", key: "E2", width: 8 },
-        { header: "E3", key: "E3", width: 8 },
-        { header: "E4", key: "E4", width: 8 },
-        { header: "E5", key: "E5", width: 8 },
-        { header: "E6", key: "E6", width: 8 }
-      ];
-      worksheet.addRow([
-        "Nr.",
-        "Holl",
-        "H\xF6nd",
-        "Knapi",
-        "LiturRas",
-        "F\xE9lag knapa",
-        "Hestur",
-        "Litur",
-        "Aldur",
-        "F\xE9lag eiganda",
-        "Eigandi",
-        "Fa\xF0ir",
-        "M\xF3\xF0ir",
-        "Li\xF0",
-        "NafnBIG",
-        "E1",
-        "E2",
-        "E3",
-        "E4",
-        "E5",
-        "E6"
-      ]);
+    if (sheetName !== "raslistar") {
+      removeWorksheetIfExists(workbook, "raslistar");
     }
-    const headers = getHeaderMap(worksheet);
+    if (Array.isArray(removeSheets)) {
+      for (const name of removeSheets) {
+        if (name && name !== sheetName) {
+          removeWorksheetIfExists(workbook, name);
+        }
+      }
+    }
+    let worksheet = workbook.getWorksheet(sheetName);
+    const isForkeppni = sheetName.toLowerCase() === "forkeppni";
+    const needsSaeti = sheetName.toLowerCase() === "forkeppni" || sheetName.toLowerCase() === "a-\xFArslit" || sheetName.toLowerCase() === "b-\xFArslit";
+    const baseHeaders = [
+      "Nr.",
+      ...needsSaeti ? ["S\xE6ti"] : [],
+      "Holl",
+      "H\xF6nd",
+      "Knapi",
+      "LiturRas",
+      "F\xE9lag knapa",
+      "Hestur",
+      "Litur",
+      "Aldur",
+      "F\xE9lag eiganda",
+      "Li\xF0",
+      "NafnBIG",
+      "E1",
+      "E2",
+      "E3",
+      "E4",
+      "E5",
+      "E6"
+    ];
+    const headersForSheet = baseHeaders;
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.columns = headersForSheet.map((header) => {
+        const widthMap = {
+          "Nr.": 6,
+          Holl: 6,
+          H\u00F6nd: 6,
+          Knapi: 24,
+          LiturRas: 14,
+          "F\xE9lag knapa": 18,
+          Hestur: 28,
+          Litur: 20,
+          Aldur: 6,
+          "F\xE9lag eiganda": 18,
+          Eigandi: 22,
+          Fa\u00F0ir: 28,
+          M\u00F3\u00F0ir: 28,
+          Li\u00F0: 10,
+          NafnBIG: 28
+        };
+        return { header, key: header, width: widthMap[header] || 8 };
+      });
+      if (worksheet.rowCount === 0) {
+        worksheet.addRow(headersForSheet);
+      }
+    }
+    const headerInfo = getHeaderInfo(worksheet);
+    const headers = headerInfo.map;
+    ensureHeaders(worksheet, headerInfo, headersForSheet);
+    const row1 = worksheet.getRow(1);
+    const row2 = worksheet.getRow(2);
+    if (row1.getCell(1).value === "Nr." && row2.getCell(1).value === "Nr.") {
+      worksheet.spliceRows(2, 1);
+    }
     const nrCol = headers.get("Nr.");
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? "";
-      let row = nrCol ? getRowByValue(worksheet, nrCol, trackNumber) : null;
+      let row = nrCol ? getRowByValue(worksheet, nrCol, trackNumber, headerInfo.headerRow + 1) : null;
       if (!row) {
         row = worksheet.addRow([]);
       }
@@ -88768,6 +88889,7 @@ async function updateStartingListSheet(startingList) {
       const riderNameUpper = riderName ? riderName.toUpperCase() : "";
       const cells = {
         "Nr.": trackNumber,
+        ...needsSaeti ? { S\u00E6ti: "" } : {},
         Holl: item.holl ?? "",
         H\u00F6nd: item.hond ?? "",
         Knapi: riderName,
@@ -88786,49 +88908,69 @@ async function updateStartingListSheet(startingList) {
           row.getCell(col).value = value;
         }
       }
-      const ownerCol = headers.get("Eigandi");
-      const fatherCol = headers.get("Fa\xF0ir");
-      const motherCol = headers.get("M\xF3\xF0ir");
-      const needsHorseInfo = ownerCol && !row.getCell(ownerCol).value || fatherCol && !row.getCell(fatherCol).value || motherCol && !row.getCell(motherCol).value;
-      if (needsHorseInfo && item.hross_numer != null) {
-        const horseInfo = await getHorseInfo(item.hross_numer);
-        if (horseInfo) {
-          if (ownerCol && !row.getCell(ownerCol).value)
-            row.getCell(ownerCol).value = horseInfo.eigandi ?? "";
-          if (fatherCol && !row.getCell(fatherCol).value)
-            row.getCell(fatherCol).value = horseInfo.fadir_nafn ?? "";
-          if (motherCol && !row.getCell(motherCol).value)
-            row.getCell(motherCol).value = horseInfo.modir_nafn ?? "";
+    }
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
+  });
+}
+async function updateResultsScores(results, sheetName = "raslistar", removeSheets = []) {
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    if (sheetName !== "raslistar") {
+      removeWorksheetIfExists(workbook, "raslistar");
+    }
+    if (Array.isArray(removeSheets)) {
+      for (const name of removeSheets) {
+        if (name && name !== sheetName) {
+          removeWorksheetIfExists(workbook, name);
         }
       }
     }
-    await writeWorkbookAtomic(workbook);
-  });
-}
-async function updateResultsScores(results) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
-    const worksheet = workbook.getWorksheet("raslistar");
+    const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) {
       return;
     }
-    const headers = getHeaderMap(worksheet);
+    const headerInfo = getHeaderInfo(worksheet);
+    const headers = headerInfo.map;
+    const isForkeppni = sheetName.toLowerCase() === "forkeppni";
+    const needsSaeti = sheetName.toLowerCase() === "forkeppni" || sheetName.toLowerCase() === "a-\xFArslit" || sheetName.toLowerCase() === "b-\xFArslit";
+    ensureHeaders(worksheet, headerInfo, [
+      ...needsSaeti ? ["S\xE6ti"] : [],
+      "E1",
+      "E2",
+      "E3",
+      "E4",
+      "E5",
+      "E6"
+    ]);
     const nrCol = headers.get("Nr.");
+    const saetiCol = needsSaeti ? headers.get("S\xE6ti") : null;
     const e1Col = headers.get("E1");
     const e2Col = headers.get("E2");
     const e3Col = headers.get("E3");
     const e4Col = headers.get("E4");
     const e5Col = headers.get("E5");
     const e6Col = headers.get("E6");
+    const breakdownCols = isForkeppni ? null : /* @__PURE__ */ new Map();
     if (!nrCol || !e1Col || !e2Col || !e3Col || !e4Col || !e5Col || !e6Col) {
       return;
     }
     for (const result of results) {
       const trackNumber = result.vallarnumer ?? "";
-      const row = getRowByValue(worksheet, nrCol, trackNumber);
+      const row = getRowByValue(
+        worksheet,
+        nrCol,
+        trackNumber,
+        headerInfo.headerRow + 1
+      );
       if (!row) continue;
+      if (saetiCol) {
+        row.getCell(saetiCol).value = result.saeti ?? result.fmt_saeti ?? "";
+      }
       const judges = Array.isArray(result.einkunnir_domara) ? result.einkunnir_domara : [];
-      console.log("[einkunnir_domara]", trackNumber, judges);
+      if (DEBUG_LOGS) {
+        console.log("[einkunnir_domara]", trackNumber, judges);
+      }
       const scores = judges.slice(0, 5).map((j) => parseJudgeScore(j?.domari_adaleinkunn));
       row.getCell(e1Col).value = roundScore(scores[0] ?? null);
       row.getCell(e2Col).value = roundScore(scores[1] ?? null);
@@ -88838,29 +88980,36 @@ async function updateResultsScores(results) {
       row.getCell(e6Col).value = roundScore(
         parseJudgeScore(result.keppandi_medaleinkunn)
       );
-    }
-    await writeWorkbookAtomic(workbook);
-  });
-}
-async function writeDataSheet(sheetName, headers, rows) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
-    let worksheet = workbook.getWorksheet(sheetName);
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet(sheetName);
-      worksheet.addRow(headers);
-    }
-    const headerMap = getHeaderMap(worksheet);
-    for (const rowData of rows) {
-      const row = worksheet.addRow([]);
-      for (const [header, value] of Object.entries(rowData)) {
-        const col = headerMap.get(header);
-        if (col) {
-          row.getCell(col).value = value;
+      const keppniName = (result.keppni_nafn ?? result.aframrodun ?? "").toString().toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim();
+      if (!isForkeppni && judges.length && breakdownCols) {
+        for (let j = 0; j < Math.min(judges.length, 5); j += 1) {
+          const details = Array.isArray(judges[j]?.sundurlidun_einkunna) ? judges[j].sundurlidun_einkunna : [];
+          for (const detail of details) {
+            const abbr = getGangtegundAbbr(detail?.gangtegund);
+            if (!abbr) continue;
+            if (!breakdownCols.has(abbr)) {
+              const headersToAdd = [];
+              for (let i = 1; i <= 5; i += 1) {
+                headersToAdd.push(`E${i}_${abbr}`);
+              }
+              ensureHeaders(worksheet, headerInfo, headersToAdd);
+              breakdownCols.set(
+                abbr,
+                headersToAdd.map((h) => headers.get(h))
+              );
+            }
+            const cols = breakdownCols.get(abbr);
+            const col = cols?.[j];
+            if (!col) continue;
+            row.getCell(col).value = roundScore(
+              parseJudgeScore(detail?.einkunn)
+            );
+          }
         }
       }
     }
-    await writeWorkbookAtomic(workbook);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
 
@@ -88874,8 +89023,44 @@ var EVENT_DEFINITIONS = {
   event_naesti_sprettur: ["eventId", "classId", "competitionId"],
   event_keppnisgreinar: ["eventId"]
 };
+var COMPETITION_NAME_BY_ID = {
+  1: "Forkeppni",
+  2: "A-\xFArslit",
+  3: "B-\xFArslit",
+  4: "1. sprettur",
+  5: "2. sprettur",
+  6: "3. sprettur",
+  7: "4. sprettur",
+  8: "5. sprettur",
+  9: "6. sprettur",
+  10: "S\xE9rst\xF6k forkeppni",
+  11: "Milliri\xF0ill",
+  12: "C \xFArslit"
+};
+function logWebhook(message, ...args) {
+  const ts = (/* @__PURE__ */ new Date()).toTimeString().split(" ")[0];
+  console.log(`[${ts}] ${message}`, ...args);
+}
+function formatWebhookInfo(eventName, payload) {
+  return `tegund=${eventName} eventId=${payload.eventId ?? ""} classId=${payload.classId ?? ""} competitionId=${payload.competitionId ?? ""} published=${payload.published ?? ""}`;
+}
+function getCompetitionName(competitionId) {
+  const id = Number(competitionId);
+  if (!Number.isFinite(id)) return null;
+  return COMPETITION_NAME_BY_ID[id] || null;
+}
+function getCompetitionSheetName(competitionId) {
+  const name = getCompetitionName(competitionId);
+  const id = Number(competitionId);
+  if (name) {
+    return name;
+  }
+  const base = `Keppni ${id}`;
+  return base.length > 31 ? base.slice(0, 31) : base;
+}
 var dedupeCache = /* @__PURE__ */ new Map();
 var startingListCache = /* @__PURE__ */ new Map();
+var competitionIdByClassId = /* @__PURE__ */ new Map();
 var lastWebhookAt = null;
 var lastWebhookProcessedAt = null;
 var lastError = null;
@@ -88924,25 +89109,57 @@ function dedupeKey(eventName, payload) {
     payload.published ?? ""
   ].join("|");
 }
-async function handleEventRaslisti(payload) {
-  const { classId, competitionId } = payload;
-  const cacheKey = `${classId}:${competitionId}`;
-  if (startingListCache.has(cacheKey)) {
-    console.log(`[raslisti] cache hit ${cacheKey}`);
-    return;
+async function resolveCompetitionId(payload) {
+  if (payload.competitionId != null) {
+    competitionIdByClassId.set(payload.classId, payload.competitionId);
+    return payload.competitionId;
   }
+  if (payload.classId != null && competitionIdByClassId.has(payload.classId)) {
+    return competitionIdByClassId.get(payload.classId);
+  }
+  if (payload.eventId == null || payload.classId == null) {
+    return null;
+  }
+  const data = await apiGetWithRetry(
+    `/${SPORTFENGUR_LOCALE}/event/tests/${payload.eventId}`
+  );
+  const tests = Array.isArray(data?.res) ? data.res : [];
+  const match = tests.find(
+    (item) => Number(item.flokkar_numer) === Number(payload.classId)
+  );
+  if (match?.keppni_numer != null) {
+    competitionIdByClassId.set(payload.classId, match.keppni_numer);
+    return match.keppni_numer;
+  }
+  return null;
+}
+async function handleEventRaslisti(payload) {
+  const classId = payload.classId;
+  const competitionId = await resolveCompetitionId(payload);
+  if (competitionId == null) {
+    throw new Error("Missing competitionId for startinglist.");
+  }
+  const colorYellow = "\x1B[33m";
+  const colorGreen = "\x1B[32m";
+  const colorReset = "\x1B[0m";
+  const competitionName = getCompetitionName(competitionId);
+  const sheetName = getCompetitionSheetName(competitionId);
+  const legacySheetName = getCompetitionName(competitionId) ? `${getCompetitionName(competitionId)} (${competitionId})` : null;
+  const start = Date.now();
+  logWebhook(
+    `[r\xE1slisti] S\xE6ki keppni ${competitionName ? `${competitionName} ` : ""}(flokkur ${classId}, keppni ${competitionId})`
+  );
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`
   );
   const startingList = Array.isArray(data?.raslisti) ? data.raslisti : [];
-  console.log(
-    `[raslisti] ${classId}/${competitionId} count=${startingList.length}`
+  logWebhook(`[r\xE1slisti] Fj\xF6ldi \xED r\xE1slista: ${startingList.length}`);
+  logWebhook(
+    `${colorYellow}\xDEa\xF0 er veri\xF0 a\xF0 skrifa \xED excel file'inn. Haldi\xF0 \xED hestana!${colorReset}`
   );
-  if (DEBUG_LOGS) {
-    console.log("[raslisti] response", data);
-  }
-  await updateStartingListSheet(startingList);
-  startingListCache.set(cacheKey, true);
+  await updateStartingListSheet(startingList, sheetName, legacySheetName ? [legacySheetName] : []);
+  logWebhook(`${colorGreen}B\xFAi\xF0 a\xF0 skrifa${colorReset}`);
+  logWebhook(`[r\xE1slisti] Skrifun loki\xF0 \xE1 ${Date.now() - start}ms`);
 }
 async function handleEventKeppendalistiBreyta(payload) {
   const data = await apiGetWithRetry(
@@ -89019,50 +89236,38 @@ async function handleEventKeppnisgreinar(payload) {
   );
 }
 async function handleEventEinkunnSaeti(payload) {
-  const { classId, competitionId } = payload;
+  const classId = payload.classId;
+  const competitionId = await resolveCompetitionId(payload);
+  if (competitionId == null) {
+    throw new Error("Missing competitionId for results.");
+  }
+  const colorYellow = "\x1B[33m";
+  const colorGreen = "\x1B[32m";
+  const colorReset = "\x1B[0m";
+  const competitionName = getCompetitionName(competitionId);
+  const sheetName = getCompetitionSheetName(competitionId);
+  const legacySheetName = getCompetitionName(competitionId) ? `${getCompetitionName(competitionId)} (${competitionId})` : null;
+  const start = Date.now();
+  logWebhook(
+    `[einkunnir] S\xE6ki keppni ${competitionName ? `${competitionName} ` : ""}(flokkur ${classId}, keppni ${competitionId})`
+  );
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`
   );
   if (DEBUG_LOGS) {
-    console.log("[einkunn_saeti] response", data);
+    logWebhook("[einkunnir] response", data);
   }
-  const rows = (data?.einkunnir || []).map((item) => ({
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    eventId: payload.eventId,
-    classId,
-    competitionId,
-    knapi_nafn: item.knapi_nafn ?? "",
-    hross_nafn: item.hross_nafn ?? "",
-    hross_fulltnafn: item.hross_fulltnafn ?? "",
-    faedingarnumer: item.faedingarnumer ?? "",
-    keppandi_numer: item.keppandi_numer ?? "",
-    vallarnumer: item.vallarnumer ?? "",
-    saeti: item.saeti ?? "",
-    keppandi_medaleinkunn: item.keppandi_medaleinkunn ?? "",
-    keppandi_einkunn_5_ds: item.keppandi_einkunn_5_ds ?? "",
-    einkunnir_domara: JSON.stringify(item.einkunnir_domara ?? [])
-  }));
-  await updateResultsScores(data?.einkunnir || []);
-  await writeDataSheet(
-    "einkunnir",
-    [
-      "timestamp",
-      "eventId",
-      "classId",
-      "competitionId",
-      "knapi_nafn",
-      "hross_nafn",
-      "hross_fulltnafn",
-      "faedingarnumer",
-      "keppandi_numer",
-      "vallarnumer",
-      "saeti",
-      "keppandi_medaleinkunn",
-      "keppandi_einkunn_5_ds",
-      "einkunnir_domara"
-    ],
-    rows
+  logWebhook(
+    `${colorYellow}\xDEa\xF0 er veri\xF0 a\xF0 skrifa \xED excel file'inn. Haldi\xF0 \xED hestana!${colorReset}`
   );
+  await updateResultsScores(
+    data?.einkunnir || [],
+    sheetName,
+    legacySheetName ? [legacySheetName] : []
+  );
+  await removeSheet("einkunnir");
+  logWebhook(`${colorGreen}B\xFAi\xF0 a\xF0 skrifa${colorReset}`);
+  logWebhook(`[einkunnir] Skrifun loki\xF0 \xE1 ${Date.now() - start}ms`);
 }
 async function handleWebhook(req, res, eventName) {
   if (!requireWebhookSecret(req, res)) {
@@ -89074,17 +89279,26 @@ async function handleWebhook(req, res, eventName) {
     res.status(400).send(`Missing required fields: ${missing.join(", ")}`);
     return;
   }
-  console.log(`[webhook] ${eventName}`, payload);
+  const colorCyan = "\x1B[36m";
+  const colorReset = "\x1B[0m";
+  logWebhook(
+    `${colorCyan}[vefkr\xF3kur] m\xF3tteki\xF0${colorReset} ${formatWebhookInfo(
+      eventName,
+      payload
+    )}`
+  );
   res.send("Skeyti m\xF3tteki\xF0");
   lastWebhookAt = (/* @__PURE__ */ new Date()).toISOString();
   const key = dedupeKey(eventName, payload);
   pruneDedupeCache();
   if (dedupeCache.has(key)) {
-    console.log(`[webhook] duplicate ignored ${key}`);
+    logWebhook(`[vefkr\xF3kur] tv\xEDritun hunsu\xF0 ${key}`);
     return;
   }
   dedupeCache.set(key, Date.now());
   try {
+    const start = Date.now();
+    logWebhook(`[vefkr\xF3kur] vinnsla hafin: ${eventName}`);
     await appendWebhookRow(eventName, payload);
     if (eventName === "event_raslisti_birtur" || eventName === "event_naesti_sprettur") {
       await handleEventRaslisti(payload);
@@ -89096,9 +89310,10 @@ async function handleWebhook(req, res, eventName) {
       await handleEventEinkunnSaeti(payload);
     }
     lastWebhookProcessedAt = (/* @__PURE__ */ new Date()).toISOString();
+    logWebhook(`[vefkr\xF3kur] loki\xF0: ${eventName} \xE1 ${Date.now() - start}ms`);
   } catch (error) {
     lastError = `${(/* @__PURE__ */ new Date()).toISOString()} ${eventName} ${error.message}`;
-    console.error(`Webhook ${eventName} failed:`, error);
+    logWebhook(`Vefkr\xF3kur ${eventName} mist\xF3kst:`, error);
   }
 }
 function registerWebhookRoutes(app2) {
@@ -89129,7 +89344,7 @@ function registerHealthRoute(app2) {
 }
 function registerTestRoute(app2) {
   app2.post("/webhooks/test", (req, res) => {
-    console.log("[webhook] test", req.body);
+    logWebhook("[vefkr\xF3kur] pr\xF3fun", req.body);
     res.send("Skeyti m\xF3tteki\xF0");
   });
 }
@@ -89140,6 +89355,12 @@ function registerCurrentRoutes(app2) {
   app2.post("/current", (req, res) => {
     currentPayload = req.body || {};
     res.send("Skeyti m\xF3tteki\xF0");
+  });
+}
+function registerCacheRoutes(app2) {
+  app2.post("/cache/raslisti/clear", (req, res) => {
+    startingListCache.clear();
+    res.send("Cache hreinsa\xF0");
   });
 }
 function registerRootRoute(app2) {
@@ -89387,11 +89608,19 @@ registerWebhookRoutes(app);
 registerTestRoute(app);
 registerHealthRoute(app);
 registerCurrentRoutes(app);
+registerCacheRoutes(app);
 registerDocs(app);
 var port = process.env.PORT || 3e3;
 app.listen(port, () => {
-  console.log("SportFengur Webhooks (packaged exe) starting");
-  console.log(`Server is running on port ${port}`);
+  console.log(`\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557  \u2588\u2588\u2557\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557   \u2588\u2588\u2557
+\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u255A\u2588\u2588\u2557\u2588\u2588\u2554\u255D\u2588\u2588\u2551\u255A\u2550\u2550\u2588\u2588\u2554\u2550\u2550\u255D\u2588\u2588\u2551   \u2588\u2588\u2551
+\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551 \u255A\u2588\u2588\u2588\u2554\u255D \u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2551
+\u2588\u2588\u2554\u2550\u2550\u255D  \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u255D  \u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551 \u2588\u2588\u2554\u2588\u2588\u2557 \u2588\u2588\u2551   \u2588\u2588\u2551   \u255A\u2588\u2588\u2557 \u2588\u2588\u2554\u255D
+\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2551     \u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2554\u255D \u2588\u2588\u2557\u2588\u2588\u2551   \u2588\u2588\u2551    \u255A\u2588\u2588\u2588\u2588\u2554\u255D 
+\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u255D\u255A\u2550\u255D\u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u255D     \u255A\u2550\u255D  \u255A\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D\u255A\u2550\u255D   \u255A\u2550\u255D     \u255A\u2550\u2550\u2550\u255D  
+                                                                `);
+  console.log("SportFengur Webhooks er r\xE6st");
+  console.log(`Vef\xFEj\xF3nn keyrir \xE1 porti ${port}`);
 });
 /*! Bundled license information:
 

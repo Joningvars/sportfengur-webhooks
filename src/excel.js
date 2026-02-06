@@ -1,11 +1,9 @@
 import ExcelJS from 'exceljs';
 import fs from 'fs/promises';
 import path from 'path';
-import { EXCEL_PATH, EXCEL_OUTPUT_PATH } from './config.js';
-import { apiGetWithRetry } from './sportfengur.js';
+import { EXCEL_PATH, EXCEL_OUTPUT_PATH, DEBUG_LOGS } from './config.js';
 
 let excelWriteQueue = Promise.resolve();
-const horseInfoCache = new Map();
 
 function enqueueExcelWrite(task) {
   excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
@@ -17,11 +15,18 @@ function enqueueExcelWrite(task) {
 async function ensureWorkbook() {
   const workbook = new ExcelJS.Workbook();
   try {
-    const primaryPath =
-      EXCEL_OUTPUT_PATH && EXCEL_OUTPUT_PATH !== EXCEL_PATH
-        ? EXCEL_OUTPUT_PATH
-        : EXCEL_PATH;
-    await workbook.xlsx.readFile(primaryPath);
+    const outputPath = EXCEL_OUTPUT_PATH && EXCEL_OUTPUT_PATH !== EXCEL_PATH
+      ? EXCEL_OUTPUT_PATH
+      : null;
+    if (outputPath) {
+      try {
+        await fs.access(outputPath);
+        await workbook.xlsx.readFile(outputPath);
+        return workbook;
+      } catch {}
+    }
+    await fs.access(EXCEL_PATH);
+    await workbook.xlsx.readFile(EXCEL_PATH);
   } catch (error) {
     const notFound =
       error.code === 'ENOENT' ||
@@ -36,30 +41,6 @@ async function ensureWorkbook() {
     if (outputDir && outputDir !== inputDir) {
       await fs.mkdir(outputDir, { recursive: true });
     }
-    const raslistar = workbook.addWorksheet('raslistar');
-    raslistar.addRow([
-      'Nr.',
-      'Holl',
-      'Hönd',
-      'Knapi',
-      'LiturRas',
-      'Félag knapa',
-      'Hestur',
-      'Litur',
-      'Aldur',
-      'Félag eiganda',
-      'Eigandi',
-      'Faðir',
-      'Móðir',
-      'Lið',
-      'NafnBIG',
-      'E1',
-      'E2',
-      'E3',
-      'E4',
-      'E5',
-      'E6',
-    ]);
     const webhooks = workbook.addWorksheet('Webhooks');
     webhooks.columns = [
       { header: 'timestamp', key: 'timestamp', width: 24 },
@@ -70,15 +51,23 @@ async function ensureWorkbook() {
       { header: 'published', key: 'published', width: 12 },
       { header: 'payload', key: 'payload', width: 80 },
     ];
-    await writeWorkbookAtomic(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   }
 
   return workbook;
 }
 
-async function writeWorkbookAtomic(workbook) {
+async function writeWorkbookAtomic(workbook, options = {}) {
+  const { log = false } = options;
   const tempPath = `${EXCEL_OUTPUT_PATH}.tmp`;
-  console.log(`[excel] writing ${EXCEL_OUTPUT_PATH}`);
+  const colorYellow = '\x1b[33m';
+  const colorGreen = '\x1b[32m';
+  const colorReset = '\x1b[0m';
+  if (log) {
+    console.log(
+      `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
+    );
+  }
   const buffer = await workbook.xlsx.writeBuffer();
   await fs.writeFile(tempPath, buffer);
   try {
@@ -91,7 +80,9 @@ async function writeWorkbookAtomic(workbook) {
       throw error;
     }
   }
-  console.log(`[excel] wrote ${EXCEL_OUTPUT_PATH}`);
+  if (log) {
+    console.log(`${colorGreen}Búið að skrifa${colorReset}`);
+  }
 }
 
 function getHeaderInfo(worksheet) {
@@ -116,6 +107,63 @@ function getHeaderInfo(worksheet) {
     }
   });
   return { map, headerRow: bestRow };
+}
+
+const PREFERRED_SHEET_ORDER = ['Forkeppni', 'B-úrslit', 'A-úrslit'];
+
+function reorderWorkbookSheets(workbook) {
+  if (!Array.isArray(workbook._worksheets)) return;
+  const sheets = workbook.worksheets;
+  const byName = new Map(sheets.map((ws) => [ws.name.toLowerCase(), ws]));
+  const ordered = [];
+
+  for (const name of PREFERRED_SHEET_ORDER) {
+    const ws = byName.get(name.toLowerCase());
+    if (ws) ordered.push(ws);
+  }
+
+  for (const ws of sheets) {
+    if (!ordered.includes(ws) && ws.name !== 'Webhooks') {
+      ordered.push(ws);
+    }
+  }
+
+  const webhooks = workbook.getWorksheet('Webhooks');
+  if (webhooks) ordered.push(webhooks);
+
+  workbook._worksheets = [null, ...ordered];
+  ordered.forEach((ws, i) => {
+    ws.id = i + 1;
+  });
+}
+
+function removeWorksheetIfExists(workbook, sheetName) {
+  const sheet = workbook.getWorksheet(sheetName);
+  if (sheet) {
+    workbook.removeWorksheet(sheet.id);
+  }
+}
+
+export async function removeSheet(sheetName) {
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    removeWorksheetIfExists(workbook, sheetName);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
+  });
+}
+
+function ensureHeaders(worksheet, headerInfo, headersToEnsure, width = 8) {
+  const headerRow = worksheet.getRow(headerInfo.headerRow);
+  let lastCol = headerRow.cellCount || headerRow.actualCellCount || 0;
+  for (const header of headersToEnsure) {
+    if (!headerInfo.map.has(header)) {
+      lastCol += 1;
+      headerRow.getCell(lastCol).value = header;
+      worksheet.getColumn(lastCol).width = width;
+      headerInfo.map.set(header, lastCol);
+    }
+  }
 }
 
 function getRowByValue(worksheet, col, value, startRow = 2) {
@@ -167,15 +215,17 @@ function roundScore(value) {
   return Math.round(value * 100) / 100;
 }
 
-async function getHorseInfo(horseId) {
-  if (!horseId && horseId !== 0) return null;
-  if (horseInfoCache.has(horseId)) {
-    return horseInfoCache.get(horseId);
-  }
-  const data = await apiGetWithRetry(`/horseinfo/${horseId}`);
-  const info = Array.isArray(data?.res) ? data.res[0] : null;
-  horseInfoCache.set(horseId, info);
-  return info;
+function getGangtegundAbbr(value) {
+  if (!value) return '';
+  const raw = value.toString().trim().toLowerCase();
+  if (raw.includes('tölt frjáls hraði')) return 'TFH';
+  if (raw.includes('hægt tölt')) return 'HT';
+  if (raw.includes('tölt með slakan taum')) return 'TST';
+  if (raw.includes('brokk')) return 'BR';
+  if (raw.includes('fet')) return 'FE';
+  if (raw.includes('stökk')) return 'ST';
+  if (raw.includes('greitt')) return 'GR';
+  return '';
 }
 
 export async function appendWebhookRow(eventName, payload) {
@@ -184,85 +234,133 @@ export async function appendWebhookRow(eventName, payload) {
     let worksheet = workbook.getWorksheet('Webhooks');
     if (!worksheet) {
       worksheet = workbook.addWorksheet('Webhooks');
-      worksheet.columns = [
-        { header: 'timestamp', key: 'timestamp', width: 24 },
-        { header: 'event', key: 'event', width: 28 },
-        { header: 'eventId', key: 'eventId', width: 14 },
-        { header: 'classId', key: 'classId', width: 14 },
-        { header: 'competitionId', key: 'competitionId', width: 16 },
-        { header: 'published', key: 'published', width: 12 },
-        { header: 'payload', key: 'payload', width: 80 },
-      ];
+      worksheet.addRow([
+        'timestamp',
+        'event',
+        'eventId',
+        'classId',
+        'competitionId',
+        'published',
+        'payload',
+      ]);
+      worksheet.getColumn(1).width = 24;
+      worksheet.getColumn(2).width = 28;
+      worksheet.getColumn(3).width = 14;
+      worksheet.getColumn(4).width = 14;
+      worksheet.getColumn(5).width = 16;
+      worksheet.getColumn(6).width = 12;
+      worksheet.getColumn(7).width = 80;
     }
-    worksheet.addRow({
-      timestamp: new Date().toISOString(),
-      event: eventName,
-      eventId: payload.eventId ?? '',
-      classId: payload.classId ?? '',
-      competitionId: payload.competitionId ?? '',
-      published: payload.published ?? '',
-      payload: JSON.stringify(payload),
-    });
-    await writeWorkbookAtomic(workbook);
+    const headerInfo = getHeaderInfo(worksheet);
+    ensureHeaders(worksheet, headerInfo, [
+      'timestamp',
+      'event',
+      'eventId',
+      'classId',
+      'competitionId',
+      'published',
+      'payload',
+    ], 16);
+    const row = worksheet.addRow([]);
+    const set = (header, value) => {
+      const col = headerInfo.map.get(header);
+      if (col) row.getCell(col).value = value;
+    };
+    set('timestamp', new Date().toISOString());
+    set('event', eventName);
+    set('eventId', payload.eventId ?? '');
+    set('classId', payload.classId ?? '');
+    set('competitionId', payload.competitionId ?? '');
+    set('published', payload.published ?? '');
+    set('payload', JSON.stringify(payload));
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
 
-export async function updateStartingListSheet(startingList) {
+export async function updateStartingListSheet(
+  startingList,
+  sheetName = 'raslistar',
+  removeSheets = [],
+) {
   await enqueueExcelWrite(async () => {
     const workbook = await ensureWorkbook();
-    let worksheet = workbook.getWorksheet('raslistar');
+    if (sheetName !== 'raslistar') {
+      removeWorksheetIfExists(workbook, 'raslistar');
+    }
+    if (Array.isArray(removeSheets)) {
+      for (const name of removeSheets) {
+        if (name && name !== sheetName) {
+          removeWorksheetIfExists(workbook, name);
+        }
+      }
+    }
+    let worksheet = workbook.getWorksheet(sheetName);
+    const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
+    const needsSaeti =
+      sheetName.toLowerCase() === 'forkeppni' ||
+      sheetName.toLowerCase() === 'a-úrslit' ||
+      sheetName.toLowerCase() === 'b-úrslit';
+    const baseHeaders = [
+      'Nr.',
+      ...(needsSaeti ? ['Sæti'] : []),
+      'Holl',
+      'Hönd',
+      'Knapi',
+      'LiturRas',
+      'Félag knapa',
+      'Hestur',
+      'Litur',
+      'Aldur',
+      'Félag eiganda',
+      'Lið',
+      'NafnBIG',
+      'E1',
+      'E2',
+      'E3',
+      'E4',
+      'E5',
+      'E6',
+    ];
+    const headersForSheet = baseHeaders;
     if (!worksheet) {
-      worksheet = workbook.addWorksheet('raslistar');
-      worksheet.columns = [
-        { header: 'Nr.', key: 'Nr.', width: 6 },
-        { header: 'Holl', key: 'Holl', width: 6 },
-        { header: 'Hönd', key: 'Hönd', width: 6 },
-        { header: 'Knapi', key: 'Knapi', width: 24 },
-        { header: 'LiturRas', key: 'LiturRas', width: 14 },
-        { header: 'Félag knapa', key: 'Félag knapa', width: 18 },
-        { header: 'Hestur', key: 'Hestur', width: 28 },
-        { header: 'Litur', key: 'Litur', width: 20 },
-        { header: 'Aldur', key: 'Aldur', width: 6 },
-        { header: 'Félag eiganda', key: 'Félag eiganda', width: 18 },
-        { header: 'Eigandi', key: 'Eigandi', width: 22 },
-        { header: 'Faðir', key: 'Faðir', width: 28 },
-        { header: 'Móðir', key: 'Móðir', width: 28 },
-        { header: 'Lið', key: 'Lið', width: 10 },
-        { header: 'NafnBIG', key: 'NafnBIG', width: 28 },
-        { header: 'E1', key: 'E1', width: 8 },
-        { header: 'E2', key: 'E2', width: 8 },
-        { header: 'E3', key: 'E3', width: 8 },
-        { header: 'E4', key: 'E4', width: 8 },
-        { header: 'E5', key: 'E5', width: 8 },
-        { header: 'E6', key: 'E6', width: 8 },
-      ];
-      worksheet.addRow([
-        'Nr.',
-        'Holl',
-        'Hönd',
-        'Knapi',
-        'LiturRas',
-        'Félag knapa',
-        'Hestur',
-        'Litur',
-        'Aldur',
-        'Félag eiganda',
-        'Eigandi',
-        'Faðir',
-        'Móðir',
-        'Lið',
-        'NafnBIG',
-        'E1',
-        'E2',
-        'E3',
-        'E4',
-        'E5',
-        'E6',
-      ]);
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.columns = headersForSheet.map((header) => {
+        const widthMap = {
+          'Nr.': 6,
+          Holl: 6,
+          Hönd: 6,
+          Knapi: 24,
+          LiturRas: 14,
+          'Félag knapa': 18,
+          Hestur: 28,
+          Litur: 20,
+          Aldur: 6,
+          'Félag eiganda': 18,
+          Eigandi: 22,
+          Faðir: 28,
+          Móðir: 28,
+          Lið: 10,
+          NafnBIG: 28,
+        };
+        return { header, key: header, width: widthMap[header] || 8 };
+      });
+      if (worksheet.rowCount === 0) {
+        worksheet.addRow(headersForSheet);
+      }
     }
 
     const headerInfo = getHeaderInfo(worksheet);
     const headers = headerInfo.map;
+    ensureHeaders(worksheet, headerInfo, headersForSheet);
+    const row1 = worksheet.getRow(1);
+    const row2 = worksheet.getRow(2);
+    if (
+      row1.getCell(1).value === 'Nr.' &&
+      row2.getCell(1).value === 'Nr.'
+    ) {
+      worksheet.spliceRows(2, 1);
+    }
     const nrCol = headers.get('Nr.');
 
     for (const item of startingList) {
@@ -281,23 +379,24 @@ export async function updateStartingListSheet(startingList) {
         item.knapi_fullt_nafn ?? item.knapi_fulltnafn ?? item.knapi_nafn ?? '';
       const riderNameUpper = riderName ? riderName.toUpperCase() : '';
 
-      const cells = {
-        'Nr.': trackNumber,
-        Holl: item.holl ?? '',
-        Hönd: item.hond ?? '',
-        Knapi: riderName,
-        LiturRas:
-          item.rodun_litur_numer != null && item.rodun_litur
-            ? `${item.rodun_litur_numer} - ${item.rodun_litur}`
-            : (item.rodun_litur ?? ''),
-        'Félag knapa': item.adildarfelag_knapa ?? '',
-        Hestur: horseFullName,
-        Litur: item.hross_litur ?? '',
-        Aldur: aldur,
-        'Félag eiganda': item.adildarfelag_eiganda ?? '',
-        Lið: '',
-        NafnBIG: riderNameUpper,
-      };
+    const cells = {
+      'Nr.': trackNumber,
+      ...(needsSaeti ? { Sæti: '' } : {}),
+      Holl: item.holl ?? '',
+      Hönd: item.hond ?? '',
+      Knapi: riderName,
+      LiturRas:
+        item.rodun_litur_numer != null && item.rodun_litur
+          ? `${item.rodun_litur_numer} - ${item.rodun_litur}`
+          : (item.rodun_litur ?? ''),
+      'Félag knapa': item.adildarfelag_knapa ?? '',
+      Hestur: horseFullName,
+      Litur: item.hross_litur ?? '',
+      Aldur: aldur,
+      'Félag eiganda': item.adildarfelag_eiganda ?? '',
+      Lið: '',
+      NafnBIG: riderNameUpper,
+    };
 
       for (const [header, value] of Object.entries(cells)) {
         const col = headers.get(header);
@@ -306,47 +405,59 @@ export async function updateStartingListSheet(startingList) {
         }
       }
 
-      const ownerCol = headers.get('Eigandi');
-      const fatherCol = headers.get('Faðir');
-      const motherCol = headers.get('Móðir');
-      const needsHorseInfo =
-        (ownerCol && !row.getCell(ownerCol).value) ||
-        (fatherCol && !row.getCell(fatherCol).value) ||
-        (motherCol && !row.getCell(motherCol).value);
-
-      if (needsHorseInfo && item.hross_numer != null) {
-        const horseInfo = await getHorseInfo(item.hross_numer);
-        if (horseInfo) {
-          if (ownerCol && !row.getCell(ownerCol).value)
-            row.getCell(ownerCol).value = horseInfo.eigandi ?? '';
-          if (fatherCol && !row.getCell(fatherCol).value)
-            row.getCell(fatherCol).value = horseInfo.fadir_nafn ?? '';
-          if (motherCol && !row.getCell(motherCol).value)
-            row.getCell(motherCol).value = horseInfo.modir_nafn ?? '';
-        }
-      }
     }
 
-    await writeWorkbookAtomic(workbook);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
 
-export async function updateResultsScores(results) {
+export async function updateResultsScores(
+  results,
+  sheetName = 'raslistar',
+  removeSheets = [],
+) {
   await enqueueExcelWrite(async () => {
     const workbook = await ensureWorkbook();
-    const worksheet = workbook.getWorksheet('raslistar');
+    if (sheetName !== 'raslistar') {
+      removeWorksheetIfExists(workbook, 'raslistar');
+    }
+    if (Array.isArray(removeSheets)) {
+      for (const name of removeSheets) {
+        if (name && name !== sheetName) {
+          removeWorksheetIfExists(workbook, name);
+        }
+      }
+    }
+    const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) {
       return;
     }
     const headerInfo = getHeaderInfo(worksheet);
     const headers = headerInfo.map;
+    const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
+    const needsSaeti =
+      sheetName.toLowerCase() === 'forkeppni' ||
+      sheetName.toLowerCase() === 'a-úrslit' ||
+      sheetName.toLowerCase() === 'b-úrslit';
+    ensureHeaders(worksheet, headerInfo, [
+      ...(needsSaeti ? ['Sæti'] : []),
+      'E1',
+      'E2',
+      'E3',
+      'E4',
+      'E5',
+      'E6',
+    ]);
     const nrCol = headers.get('Nr.');
+    const saetiCol = needsSaeti ? headers.get('Sæti') : null;
     const e1Col = headers.get('E1');
     const e2Col = headers.get('E2');
     const e3Col = headers.get('E3');
     const e4Col = headers.get('E4');
     const e5Col = headers.get('E5');
     const e6Col = headers.get('E6');
+    const breakdownCols = isForkeppni ? null : new Map();
     if (!nrCol || !e1Col || !e2Col || !e3Col || !e4Col || !e5Col || !e6Col) {
       return;
     }
@@ -361,10 +472,16 @@ export async function updateResultsScores(results) {
       );
       if (!row) continue;
 
+      if (saetiCol) {
+        row.getCell(saetiCol).value =
+          result.saeti ?? result.fmt_saeti ?? '';
+      }
       const judges = Array.isArray(result.einkunnir_domara)
         ? result.einkunnir_domara
         : [];
-      console.log('[einkunnir_domara]', trackNumber, judges);
+      if (DEBUG_LOGS) {
+        console.log('[einkunnir_domara]', trackNumber, judges);
+      }
       const scores = judges
         .slice(0, 5)
         .map((j) => parseJudgeScore(j?.domari_adaleinkunn));
@@ -376,9 +493,45 @@ export async function updateResultsScores(results) {
       row.getCell(e6Col).value = roundScore(
         parseJudgeScore(result.keppandi_medaleinkunn),
       );
+
+      const keppniName = (result.keppni_nafn ?? result.aframrodun ?? '')
+        .toString()
+        .toLowerCase()
+        .replace(/-/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!isForkeppni && judges.length && breakdownCols) {
+        for (let j = 0; j < Math.min(judges.length, 5); j += 1) {
+          const details = Array.isArray(judges[j]?.sundurlidun_einkunna)
+            ? judges[j].sundurlidun_einkunna
+            : [];
+          for (const detail of details) {
+            const abbr = getGangtegundAbbr(detail?.gangtegund);
+            if (!abbr) continue;
+            if (!breakdownCols.has(abbr)) {
+              const headersToAdd = [];
+              for (let i = 1; i <= 5; i += 1) {
+                headersToAdd.push(`E${i}_${abbr}`);
+              }
+              ensureHeaders(worksheet, headerInfo, headersToAdd);
+              breakdownCols.set(
+                abbr,
+                headersToAdd.map((h) => headers.get(h)),
+              );
+            }
+            const cols = breakdownCols.get(abbr);
+            const col = cols?.[j];
+            if (!col) continue;
+            row.getCell(col).value = roundScore(
+              parseJudgeScore(detail?.einkunn),
+            );
+          }
+        }
+      }
     }
 
-    await writeWorkbookAtomic(workbook);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
 
@@ -402,6 +555,7 @@ export async function writeDataSheet(sheetName, headers, rows) {
       }
     }
 
-    await writeWorkbookAtomic(workbook);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }

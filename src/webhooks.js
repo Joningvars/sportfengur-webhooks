@@ -10,7 +10,7 @@ import {
   appendWebhookRow,
   updateStartingListSheet,
   updateResultsScores,
-  writeDataSheet,
+  removeSheet,
 } from './excel.js';
 
 const EVENT_DEFINITIONS = {
@@ -23,8 +23,52 @@ const EVENT_DEFINITIONS = {
   event_keppnisgreinar: ['eventId'],
 };
 
+const COMPETITION_NAME_BY_ID = {
+  1: 'Forkeppni',
+  2: 'A-úrslit',
+  3: 'B-úrslit',
+  4: '1. sprettur',
+  5: '2. sprettur',
+  6: '3. sprettur',
+  7: '4. sprettur',
+  8: '5. sprettur',
+  9: '6. sprettur',
+  10: 'Sérstök forkeppni',
+  11: 'Milliriðill',
+  12: 'C úrslit',
+};
+
+function logWebhook(message, ...args) {
+  const ts = new Date().toTimeString().split(' ')[0];
+  console.log(`[${ts}] ${message}`, ...args);
+}
+
+function formatWebhookInfo(eventName, payload) {
+  return `tegund=${eventName} eventId=${payload.eventId ?? ''} classId=${
+    payload.classId ?? ''
+  } competitionId=${payload.competitionId ?? ''} published=${
+    payload.published ?? ''
+  }`;
+}
+function getCompetitionName(competitionId) {
+  const id = Number(competitionId);
+  if (!Number.isFinite(id)) return null;
+  return COMPETITION_NAME_BY_ID[id] || null;
+}
+
+function getCompetitionSheetName(competitionId) {
+  const name = getCompetitionName(competitionId);
+  const id = Number(competitionId);
+  if (name) {
+    return name;
+  }
+  const base = `Keppni ${id}`;
+  return base.length > 31 ? base.slice(0, 31) : base;
+}
+
 const dedupeCache = new Map();
 const startingListCache = new Map();
+const competitionIdByClassId = new Map();
 let lastWebhookAt = null;
 let lastWebhookProcessedAt = null;
 let lastError = null;
@@ -84,25 +128,62 @@ function dedupeKey(eventName, payload) {
   ].join('|');
 }
 
-async function handleEventRaslisti(payload) {
-  const { classId, competitionId } = payload;
-  const cacheKey = `${classId}:${competitionId}`;
-  if (startingListCache.has(cacheKey)) {
-    console.log(`[raslisti] cache hit ${cacheKey}`);
-    return;
+async function resolveCompetitionId(payload) {
+  if (payload.competitionId != null) {
+    competitionIdByClassId.set(payload.classId, payload.competitionId);
+    return payload.competitionId;
   }
+  if (payload.classId != null && competitionIdByClassId.has(payload.classId)) {
+    return competitionIdByClassId.get(payload.classId);
+  }
+  if (payload.eventId == null || payload.classId == null) {
+    return null;
+  }
+  const data = await apiGetWithRetry(
+    `/${SPORTFENGUR_LOCALE}/event/tests/${payload.eventId}`,
+  );
+  const tests = Array.isArray(data?.res) ? data.res : [];
+  const match = tests.find(
+    (item) => Number(item.flokkar_numer) === Number(payload.classId),
+  );
+  if (match?.keppni_numer != null) {
+    competitionIdByClassId.set(payload.classId, match.keppni_numer);
+    return match.keppni_numer;
+  }
+  return null;
+}
+
+async function handleEventRaslisti(payload) {
+  const classId = payload.classId;
+  const competitionId = await resolveCompetitionId(payload);
+  if (competitionId == null) {
+    throw new Error('Missing competitionId for startinglist.');
+  }
+  const colorYellow = '\x1b[33m';
+  const colorGreen = '\x1b[32m';
+  const colorReset = '\x1b[0m';
+  const competitionName = getCompetitionName(competitionId);
+  const sheetName = getCompetitionSheetName(competitionId);
+  const legacySheetName = getCompetitionName(competitionId)
+    ? `${getCompetitionName(competitionId)} (${competitionId})`
+    : null;
+  const start = Date.now();
+  logWebhook(
+    `[ráslisti] Sæki keppni ${
+      competitionName ? `${competitionName} ` : ''
+    }(flokkur ${classId}, keppni ${competitionId})`,
+  );
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
   );
   const startingList = Array.isArray(data?.raslisti) ? data.raslisti : [];
-  console.log(
-    `[raslisti] ${classId}/${competitionId} count=${startingList.length}`,
+  logWebhook(`[ráslisti] Fjöldi í ráslista: ${startingList.length}`);
+  logWebhook(
+    `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
   );
-  if (DEBUG_LOGS) {
-    console.log('[raslisti] response', data);
-  }
-  await updateStartingListSheet(startingList);
-  startingListCache.set(cacheKey, true);
+  await updateStartingListSheet(startingList, sheetName, legacySheetName ? [legacySheetName] : []);
+  logWebhook(`${colorGreen}Búið að skrifa${colorReset}`);
+  logWebhook(`[ráslisti] Skrifun lokið á ${Date.now() - start}ms`);
 }
 
 async function handleEventKeppendalistiBreyta(payload) {
@@ -182,50 +263,42 @@ async function handleEventKeppnisgreinar(payload) {
 }
 
 async function handleEventEinkunnSaeti(payload) {
-  const { classId, competitionId } = payload;
+  const classId = payload.classId;
+  const competitionId = await resolveCompetitionId(payload);
+  if (competitionId == null) {
+    throw new Error('Missing competitionId for results.');
+  }
+  const colorYellow = '\x1b[33m';
+  const colorGreen = '\x1b[32m';
+  const colorReset = '\x1b[0m';
+  const competitionName = getCompetitionName(competitionId);
+  const sheetName = getCompetitionSheetName(competitionId);
+  const legacySheetName = getCompetitionName(competitionId)
+    ? `${getCompetitionName(competitionId)} (${competitionId})`
+    : null;
+  const start = Date.now();
+  logWebhook(
+    `[einkunnir] Sæki keppni ${
+      competitionName ? `${competitionName} ` : ''
+    }(flokkur ${classId}, keppni ${competitionId})`,
+  );
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
   );
   if (DEBUG_LOGS) {
-    console.log('[einkunn_saeti] response', data);
+    logWebhook('[einkunnir] response', data);
   }
-  const rows = (data?.einkunnir || []).map((item) => ({
-    timestamp: new Date().toISOString(),
-    eventId: payload.eventId,
-    classId,
-    competitionId,
-    knapi_nafn: item.knapi_nafn ?? '',
-    hross_nafn: item.hross_nafn ?? '',
-    hross_fulltnafn: item.hross_fulltnafn ?? '',
-    faedingarnumer: item.faedingarnumer ?? '',
-    keppandi_numer: item.keppandi_numer ?? '',
-    vallarnumer: item.vallarnumer ?? '',
-    saeti: item.saeti ?? '',
-    keppandi_medaleinkunn: item.keppandi_medaleinkunn ?? '',
-    keppandi_einkunn_5_ds: item.keppandi_einkunn_5_ds ?? '',
-    einkunnir_domara: JSON.stringify(item.einkunnir_domara ?? []),
-  }));
-  await updateResultsScores(data?.einkunnir || []);
-  await writeDataSheet(
-    'einkunnir',
-    [
-      'timestamp',
-      'eventId',
-      'classId',
-      'competitionId',
-      'knapi_nafn',
-      'hross_nafn',
-      'hross_fulltnafn',
-      'faedingarnumer',
-      'keppandi_numer',
-      'vallarnumer',
-      'saeti',
-      'keppandi_medaleinkunn',
-      'keppandi_einkunn_5_ds',
-      'einkunnir_domara',
-    ],
-    rows,
+  logWebhook(
+    `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
   );
+  await updateResultsScores(
+    data?.einkunnir || [],
+    sheetName,
+    legacySheetName ? [legacySheetName] : [],
+  );
+  await removeSheet('einkunnir');
+  logWebhook(`${colorGreen}Búið að skrifa${colorReset}`);
+  logWebhook(`[einkunnir] Skrifun lokið á ${Date.now() - start}ms`);
 }
 
 async function handleWebhook(req, res, eventName) {
@@ -240,19 +313,28 @@ async function handleWebhook(req, res, eventName) {
     return;
   }
 
-  console.log(`[webhook] ${eventName}`, payload);
+  const colorCyan = '\x1b[36m';
+  const colorReset = '\x1b[0m';
+  logWebhook(
+    `${colorCyan}[vefkrókur] móttekið${colorReset} ${formatWebhookInfo(
+      eventName,
+      payload,
+    )}`,
+  );
   res.send('Skeyti móttekið');
 
   lastWebhookAt = new Date().toISOString();
   const key = dedupeKey(eventName, payload);
   pruneDedupeCache();
   if (dedupeCache.has(key)) {
-    console.log(`[webhook] duplicate ignored ${key}`);
+    logWebhook(`[vefkrókur] tvíritun hunsuð ${key}`);
     return;
   }
   dedupeCache.set(key, Date.now());
 
   try {
+    const start = Date.now();
+    logWebhook(`[vefkrókur] vinnsla hafin: ${eventName}`);
     await appendWebhookRow(eventName, payload);
 
     if (
@@ -269,9 +351,10 @@ async function handleWebhook(req, res, eventName) {
     }
 
     lastWebhookProcessedAt = new Date().toISOString();
+    logWebhook(`[vefkrókur] lokið: ${eventName} á ${Date.now() - start}ms`);
   } catch (error) {
     lastError = `${new Date().toISOString()} ${eventName} ${error.message}`;
-    console.error(`Webhook ${eventName} failed:`, error);
+    logWebhook(`Vefkrókur ${eventName} mistókst:`, error);
   }
 }
 
@@ -306,7 +389,7 @@ export function registerHealthRoute(app) {
 
 export function registerTestRoute(app) {
   app.post('/webhooks/test', (req, res) => {
-    console.log('[webhook] test', req.body);
+    logWebhook('[vefkrókur] prófun', req.body);
     res.send('Skeyti móttekið');
   });
 }
@@ -325,7 +408,7 @@ export function registerCurrentRoutes(app) {
 export function registerCacheRoutes(app) {
   app.post('/cache/raslisti/clear', (req, res) => {
     startingListCache.clear();
-    res.send('Cache cleared');
+    res.send('Cache hreinsað');
   });
 }
 

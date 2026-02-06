@@ -1,3 +1,4 @@
+import './src/logger.js';
 import express from 'express';
 import {
   registerHealthRoute,
@@ -23,6 +24,13 @@ registerDocs(app);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log('SportFengur Webhooks (packaged exe) starting');
-  console.log(`Server is running on port ${port}`);
+  console.log(`███████╗██╗██████╗ ███████╗ █████╗ ██╗  ██╗██╗████████╗██╗   ██╗
+██╔════╝██║██╔══██╗██╔════╝██╔══██╗╚██╗██╔╝██║╚══██╔══╝██║   ██║
+█████╗  ██║██║  ██║█████╗  ███████║ ╚███╔╝ ██║   ██║   ██║   ██║
+██╔══╝  ██║██║  ██║██╔══╝  ██╔══██║ ██╔██╗ ██║   ██║   ╚██╗ ██╔╝
+███████╗██║██████╔╝██║     ██║  ██║██╔╝ ██╗██║   ██║    ╚████╔╝ 
+╚══════╝╚═╝╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝     ╚═══╝  
+                                                                `);
+  console.log('SportFengur Webhooks er ræst');
+  console.log(`Vefþjónn keyrir á porti ${port}`);
 });
