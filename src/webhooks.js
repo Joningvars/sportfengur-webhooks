@@ -4,10 +4,9 @@ import {
   SPORTFENGUR_LOCALE,
   DEDUPE_TTL_MS,
   DEBUG_LOGS,
-  EXCEL_OUTPUT_PATH,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
-import path from 'path';
+// writing to a single output file; keep sheet names for competitions
 import {
   appendWebhookRow,
   updateStartingListSheet,
@@ -86,13 +85,7 @@ function sanitizeFileName(name) {
 }
 
 function getCompetitionFilePath(competitionId) {
-  const name = getCompetitionSheetName(competitionId);
-  const safeName = sanitizeFileName(name);
-  const ext = path.extname(EXCEL_OUTPUT_PATH || '');
-  const baseDir = ext.toLowerCase() === '.xlsx'
-    ? path.dirname(EXCEL_OUTPUT_PATH)
-    : EXCEL_OUTPUT_PATH;
-  return path.join(baseDir || '.', `${safeName}.xlsx`);
+  return sanitizeFileName(getCompetitionSheetName(competitionId));
 }
 
 const dedupeCache = new Map();
@@ -196,7 +189,7 @@ async function handleEventRaslisti(payload) {
   const legacySheetName = getCompetitionName(competitionId)
     ? `${getCompetitionName(competitionId)} (${competitionId})`
     : null;
-  const outputPath = getCompetitionFilePath(competitionId);
+  const outputPath = null;
   const start = Date.now();
   logWebhook(
     `[ráslisti] Sæki keppni ${
@@ -311,7 +304,7 @@ async function handleEventEinkunnSaeti(payload) {
   const legacySheetName = getCompetitionName(competitionId)
     ? `${getCompetitionName(competitionId)} (${competitionId})`
     : null;
-  const outputPath = getCompetitionFilePath(competitionId);
+  const outputPath = null;
   const start = Date.now();
   logWebhook(
     `[einkunnir] Sæki keppni ${
