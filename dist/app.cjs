@@ -88669,6 +88669,16 @@ function getHeaderInfo(worksheet) {
   });
   return { map, headerRow: bestRow };
 }
+function getHeaderInfoFromRow(worksheet, rowNumber) {
+  const headerRow = worksheet.getRow(rowNumber);
+  const map = /* @__PURE__ */ new Map();
+  headerRow.eachCell((cell, col) => {
+    if (cell.value) {
+      map.set(cell.value.toString().trim(), col);
+    }
+  });
+  return { map, headerRow: rowNumber };
+}
 var PREFERRED_SHEET_ORDER = ["Forkeppni", "B-\xFArslit", "A-\xFArslit"];
 function reorderWorkbookSheets(workbook) {
   if (!Array.isArray(workbook._worksheets)) return;
@@ -88846,52 +88856,33 @@ async function updateStartingListSheet(startingList, sheetName = "raslistar", re
       "E6"
     ];
     const headersForSheet = baseHeaders;
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet(sheetName);
-      worksheet.columns = headersForSheet.map((header) => {
-        const widthMap = {
-          "Nr.": 6,
-          Holl: 6,
-          H\u00F6nd: 6,
-          Knapi: 24,
-          LiturRas: 14,
-          "F\xE9lag knapa": 18,
-          Hestur: 28,
-          Litur: 20,
-          Aldur: 6,
-          "F\xE9lag eiganda": 18,
-          Eigandi: 22,
-          Fa\u00F0ir: 28,
-          M\u00F3\u00F0ir: 28,
-          Li\u00F0: 10,
-          NafnBIG: 28
-        };
-        return { header, key: header, width: widthMap[header] || 8 };
-      });
-      if (worksheet.rowCount === 0) {
-        worksheet.addRow(headersForSheet);
-      }
+    if (worksheet) {
+      workbook.removeWorksheet(worksheet.id);
     }
-    const headerInfo = getHeaderInfo(worksheet);
+    worksheet = workbook.addWorksheet(sheetName);
+    worksheet.columns = headersForSheet.map((header) => {
+      const widthMap = {
+        "Nr.": 6,
+        Holl: 6,
+        H\u00F6nd: 6,
+        Knapi: 24,
+        LiturRas: 14,
+        "F\xE9lag knapa": 18,
+        Hestur: 28,
+        Litur: 20,
+        Aldur: 6,
+        "F\xE9lag eiganda": 18,
+        Eigandi: 22,
+        Fa\u00F0ir: 28,
+        M\u00F3\u00F0ir: 28,
+        Li\u00F0: 10,
+        NafnBIG: 28
+      };
+      return { header, key: header, width: widthMap[header] || 8 };
+    });
+    const headerInfo = getHeaderInfoFromRow(worksheet, 1);
     const headers = headerInfo.map;
-    ensureHeaders(worksheet, headerInfo, headersForSheet);
-    const row1 = worksheet.getRow(1);
-    const row2 = worksheet.getRow(2);
-    if (row1.getCell(1).value === "Nr.") {
-      const row2HasData = row2.cellCount > 0 && row2.hasValues;
-      if (!row2HasData) {
-        worksheet.spliceRows(2, 1);
-      } else if (row2.getCell(1).value === "Nr.") {
-        worksheet.spliceRows(2, 1);
-      }
-    }
     const nrCol = headers.get("Nr.");
-    if (worksheet.rowCount > headerInfo.headerRow) {
-      worksheet.spliceRows(
-        headerInfo.headerRow + 1,
-        worksheet.rowCount - headerInfo.headerRow
-      );
-    }
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? "";
       const row = worksheet.addRow([]);
@@ -88945,11 +88936,11 @@ async function updateResultsScores(results, sheetName = "raslistar", removeSheet
     if (!worksheet) {
       return;
     }
-    const headerInfo = getHeaderInfo(worksheet);
+    const headerInfo = getHeaderInfoFromRow(worksheet, 1);
     const headers = headerInfo.map;
     const isForkeppni = sheetName.toLowerCase() === "forkeppni";
     const needsSaeti = sheetName.toLowerCase() === "forkeppni" || sheetName.toLowerCase() === "a-\xFArslit" || sheetName.toLowerCase() === "b-\xFArslit";
-    ensureHeaders(worksheet, headerInfo, [
+    ensureHeaders(worksheet, getHeaderInfo(worksheet), [
       ...needsSaeti ? ["S\xE6ti"] : [],
       "E1",
       "E2",
@@ -88976,7 +88967,7 @@ async function updateResultsScores(results, sheetName = "raslistar", removeSheet
         worksheet,
         nrCol,
         trackNumber,
-        headerInfo.headerRow + 1
+        2
       );
       if (!row) continue;
       if (saetiCol) {
