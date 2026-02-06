@@ -4,8 +4,10 @@ import {
   SPORTFENGUR_LOCALE,
   DEDUPE_TTL_MS,
   DEBUG_LOGS,
+  EXCEL_OUTPUT_PATH,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
+import path from 'path';
 import {
   appendWebhookRow,
   updateStartingListSheet,
@@ -65,6 +67,32 @@ function getCompetitionSheetName(competitionId) {
   }
   const base = `Keppni ${id}`;
   return base.length > 31 ? base.slice(0, 31) : base;
+}
+
+function sanitizeFileName(name) {
+  return name
+    .replace(/[<>:"/\\|?*]/g, '')
+    .replace(/[áàâä]/gi, 'a')
+    .replace(/[éèêë]/gi, 'e')
+    .replace(/[íìîï]/gi, 'i')
+    .replace(/[óòôö]/gi, 'o')
+    .replace(/[úùûü]/gi, 'u')
+    .replace(/[ýÿ]/gi, 'y')
+    .replace(/[ð]/gi, 'd')
+    .replace(/[þ]/gi, 'th')
+    .replace(/[æ]/gi, 'ae')
+    .replace(/[ö]/gi, 'o')
+    .trim();
+}
+
+function getCompetitionFilePath(competitionId) {
+  const name = getCompetitionSheetName(competitionId);
+  const safeName = sanitizeFileName(name);
+  const ext = path.extname(EXCEL_OUTPUT_PATH || '');
+  const baseDir = ext.toLowerCase() === '.xlsx'
+    ? path.dirname(EXCEL_OUTPUT_PATH)
+    : EXCEL_OUTPUT_PATH;
+  return path.join(baseDir || '.', `${safeName}.xlsx`);
 }
 
 const dedupeCache = new Map();
@@ -168,6 +196,7 @@ async function handleEventRaslisti(payload) {
   const legacySheetName = getCompetitionName(competitionId)
     ? `${getCompetitionName(competitionId)} (${competitionId})`
     : null;
+  const outputPath = getCompetitionFilePath(competitionId);
   const start = Date.now();
   logWebhook(
     `[ráslisti] Sæki keppni ${
@@ -182,7 +211,12 @@ async function handleEventRaslisti(payload) {
   logWebhook(
     `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
   );
-  await updateStartingListSheet(startingList, sheetName, legacySheetName ? [legacySheetName] : []);
+  await updateStartingListSheet(
+    startingList,
+    sheetName,
+    legacySheetName ? [legacySheetName] : [],
+    outputPath,
+  );
   logWebhook(`${colorGreen}Búið að skrifa${colorReset}`);
   logWebhook(`[ráslisti] Skrifun lokið á ${Date.now() - start}ms`);
 }
@@ -277,6 +311,7 @@ async function handleEventEinkunnSaeti(payload) {
   const legacySheetName = getCompetitionName(competitionId)
     ? `${getCompetitionName(competitionId)} (${competitionId})`
     : null;
+  const outputPath = getCompetitionFilePath(competitionId);
   const start = Date.now();
   logWebhook(
     `[einkunnir] Sæki keppni ${
@@ -296,8 +331,8 @@ async function handleEventEinkunnSaeti(payload) {
     data?.einkunnir || [],
     sheetName,
     legacySheetName ? [legacySheetName] : [],
+    outputPath,
   );
-  await removeSheet('einkunnir');
   logWebhook(`${colorGreen}Búið að skrifa${colorReset}`);
   logWebhook(`[einkunnir] Skrifun lokið á ${Date.now() - start}ms`);
 }

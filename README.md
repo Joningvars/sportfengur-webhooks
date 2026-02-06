@@ -1,6 +1,6 @@
 # Uppsetning (Windows) — skref fyrir skref
 
-Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir `raslistar.xlsx` á staðnum.
+Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir XLSX skrár á staðnum.
 
 ## 1) Stillingar
 - Afrita `.env.example` → `.env`
@@ -8,7 +8,7 @@
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
   - `EXCEL_PATH` (template/input, t.d. `./data/raslistar.xlsx`)
-  - `EXCEL_OUTPUT_PATH` (live/output, t.d. `./data/raslistar_live.xlsx`)
+  - `EXCEL_OUTPUT_PATH` (output mappa eða skrá; keppnisskrár fara í þessa möppu)
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
@@ -74,7 +74,8 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://e
 - Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
-- `raslistar` er fyllt við `event_raslisti_birtur`, E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
+- Fyrir **hverja keppni** er skrifuð **sér XLSX skrá** (t.d. `Forkeppni.xlsx`, `A-úrslit.xlsx`, `B-úrslit.xlsx`) í möppunni sem `EXCEL_OUTPUT_PATH` vísar á.
+- E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
 
 ## Webhook slóðir
 ```text

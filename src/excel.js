@@ -12,21 +12,25 @@ function enqueueExcelWrite(task) {
   return excelWriteQueue;
 }
 
-async function ensureWorkbook() {
+async function ensureWorkbook(options = {}) {
+  const {
+    inputPath = EXCEL_PATH,
+    outputPath = EXCEL_OUTPUT_PATH,
+    includeWebhooks = true,
+  } = options;
   const workbook = new ExcelJS.Workbook();
   try {
-    const outputPath = EXCEL_OUTPUT_PATH && EXCEL_OUTPUT_PATH !== EXCEL_PATH
-      ? EXCEL_OUTPUT_PATH
-      : null;
-    if (outputPath) {
+    const preferredOutput =
+      outputPath && outputPath !== inputPath ? outputPath : null;
+    if (preferredOutput) {
       try {
-        await fs.access(outputPath);
-        await workbook.xlsx.readFile(outputPath);
+        await fs.access(preferredOutput);
+        await workbook.xlsx.readFile(preferredOutput);
         return workbook;
       } catch {}
     }
-    await fs.access(EXCEL_PATH);
-    await workbook.xlsx.readFile(EXCEL_PATH);
+    await fs.access(inputPath);
+    await workbook.xlsx.readFile(inputPath);
   } catch (error) {
     const notFound =
       error.code === 'ENOENT' ||
@@ -35,31 +39,33 @@ async function ensureWorkbook() {
     if (!notFound) {
       throw error;
     }
-    const inputDir = path.dirname(EXCEL_PATH);
-    const outputDir = path.dirname(EXCEL_OUTPUT_PATH);
+    const inputDir = path.dirname(inputPath);
+    const outputDir = path.dirname(outputPath);
     await fs.mkdir(inputDir, { recursive: true });
     if (outputDir && outputDir !== inputDir) {
       await fs.mkdir(outputDir, { recursive: true });
     }
-    const webhooks = workbook.addWorksheet('Webhooks');
-    webhooks.columns = [
-      { header: 'timestamp', key: 'timestamp', width: 24 },
-      { header: 'event', key: 'event', width: 28 },
-      { header: 'eventId', key: 'eventId', width: 14 },
-      { header: 'classId', key: 'classId', width: 14 },
-      { header: 'competitionId', key: 'competitionId', width: 16 },
-      { header: 'published', key: 'published', width: 12 },
-      { header: 'payload', key: 'payload', width: 80 },
-    ];
-    await writeWorkbookAtomic(workbook, { log: false });
+    if (includeWebhooks) {
+      const webhooks = workbook.addWorksheet('Webhooks');
+      webhooks.columns = [
+        { header: 'timestamp', key: 'timestamp', width: 24 },
+        { header: 'event', key: 'event', width: 28 },
+        { header: 'eventId', key: 'eventId', width: 14 },
+        { header: 'classId', key: 'classId', width: 14 },
+        { header: 'competitionId', key: 'competitionId', width: 16 },
+        { header: 'published', key: 'published', width: 12 },
+        { header: 'payload', key: 'payload', width: 80 },
+      ];
+    }
+    await writeWorkbookAtomic(workbook, { log: false, outputPath });
   }
 
   return workbook;
 }
 
 async function writeWorkbookAtomic(workbook, options = {}) {
-  const { log = false } = options;
-  const tempPath = `${EXCEL_OUTPUT_PATH}.tmp`;
+  const { log = false, outputPath = EXCEL_OUTPUT_PATH } = options;
+  const tempPath = `${outputPath}.tmp`;
   const colorYellow = '\x1b[33m';
   const colorGreen = '\x1b[32m';
   const colorReset = '\x1b[0m';
@@ -71,11 +77,11 @@ async function writeWorkbookAtomic(workbook, options = {}) {
   const buffer = await workbook.xlsx.writeBuffer();
   await fs.writeFile(tempPath, buffer);
   try {
-    await fs.rename(tempPath, EXCEL_OUTPUT_PATH);
+    await fs.rename(tempPath, outputPath);
   } catch (error) {
     if (error.code === 'EPERM' || error.code === 'EEXIST') {
-      await fs.unlink(EXCEL_OUTPUT_PATH).catch(() => {});
-      await fs.rename(tempPath, EXCEL_OUTPUT_PATH);
+      await fs.unlink(outputPath).catch(() => {});
+      await fs.rename(tempPath, outputPath);
     } else {
       throw error;
     }
@@ -282,9 +288,14 @@ export async function updateStartingListSheet(
   startingList,
   sheetName = 'raslistar',
   removeSheets = [],
+  outputPath = null,
 ) {
   await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
+    const workbook = await ensureWorkbook(
+      outputPath
+        ? { outputPath, includeWebhooks: false }
+        : undefined,
+    );
     if (sheetName !== 'raslistar') {
       removeWorksheetIfExists(workbook, 'raslistar');
     }
@@ -412,7 +423,7 @@ export async function updateStartingListSheet(
     }
 
     reorderWorkbookSheets(workbook);
-    await writeWorkbookAtomic(workbook, { log: false });
+    await writeWorkbookAtomic(workbook, { log: false, outputPath: outputPath ?? EXCEL_OUTPUT_PATH });
   });
 }
 
@@ -420,9 +431,14 @@ export async function updateResultsScores(
   results,
   sheetName = 'raslistar',
   removeSheets = [],
+  outputPath = null,
 ) {
   await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
+    const workbook = await ensureWorkbook(
+      outputPath
+        ? { outputPath, includeWebhooks: false }
+        : undefined,
+    );
     if (sheetName !== 'raslistar') {
       removeWorksheetIfExists(workbook, 'raslistar');
     }
@@ -535,7 +551,7 @@ export async function updateResultsScores(
     }
 
     reorderWorkbookSheets(workbook);
-    await writeWorkbookAtomic(workbook, { log: false });
+    await writeWorkbookAtomic(workbook, { log: false, outputPath: outputPath ?? EXCEL_OUTPUT_PATH });
   });
 }
 
