@@ -115,6 +115,17 @@ function getHeaderInfo(worksheet) {
   return { map, headerRow: bestRow };
 }
 
+function getHeaderInfoFromRow(worksheet, rowNumber) {
+  const headerRow = worksheet.getRow(rowNumber);
+  const map = new Map();
+  headerRow.eachCell((cell, col) => {
+    if (cell.value) {
+      map.set(cell.value.toString().trim(), col);
+    }
+  });
+  return { map, headerRow: rowNumber };
+}
+
 const PREFERRED_SHEET_ORDER = ['Forkeppni', 'B-úrslit', 'A-úrslit'];
 
 function reorderWorkbookSheets(workbook) {
@@ -334,54 +345,36 @@ export async function updateStartingListSheet(
       'E6',
     ];
     const headersForSheet = baseHeaders;
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet(sheetName);
-      worksheet.columns = headersForSheet.map((header) => {
-        const widthMap = {
-          'Nr.': 6,
-          Holl: 6,
-          Hönd: 6,
-          Knapi: 24,
-          LiturRas: 14,
-          'Félag knapa': 18,
-          Hestur: 28,
-          Litur: 20,
-          Aldur: 6,
-          'Félag eiganda': 18,
-          Eigandi: 22,
-          Faðir: 28,
-          Móðir: 28,
-          Lið: 10,
-          NafnBIG: 28,
-        };
-        return { header, key: header, width: widthMap[header] || 8 };
-      });
-      if (worksheet.rowCount === 0) {
-        worksheet.addRow(headersForSheet);
-      }
+    // Recreate the sheet every time to guarantee no duplicate rows.
+    if (worksheet) {
+      workbook.removeWorksheet(worksheet.id);
     }
+    worksheet = workbook.addWorksheet(sheetName);
+    worksheet.columns = headersForSheet.map((header) => {
+      const widthMap = {
+        'Nr.': 6,
+        Holl: 6,
+        Hönd: 6,
+        Knapi: 24,
+        LiturRas: 14,
+        'Félag knapa': 18,
+        Hestur: 28,
+        Litur: 20,
+        Aldur: 6,
+        'Félag eiganda': 18,
+        Eigandi: 22,
+        Faðir: 28,
+        Móðir: 28,
+        Lið: 10,
+        NafnBIG: 28,
+      };
+      return { header, key: header, width: widthMap[header] || 8 };
+    });
+    // headers are already created by worksheet.columns
 
-    const headerInfo = getHeaderInfo(worksheet);
+    const headerInfo = getHeaderInfoFromRow(worksheet, 1);
     const headers = headerInfo.map;
-    ensureHeaders(worksheet, headerInfo, headersForSheet);
-    const row1 = worksheet.getRow(1);
-    const row2 = worksheet.getRow(2);
-    if (row1.getCell(1).value === 'Nr.') {
-      const row2HasData = row2.cellCount > 0 && row2.hasValues;
-      if (!row2HasData) {
-        worksheet.spliceRows(2, 1);
-      } else if (row2.getCell(1).value === 'Nr.') {
-        worksheet.spliceRows(2, 1);
-      }
-    }
     const nrCol = headers.get('Nr.');
-    // Clear all data rows below header before rewriting.
-    if (worksheet.rowCount > headerInfo.headerRow) {
-      worksheet.spliceRows(
-        headerInfo.headerRow + 1,
-        worksheet.rowCount - headerInfo.headerRow,
-      );
-    }
 
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? '';
@@ -453,14 +446,14 @@ export async function updateResultsScores(
     if (!worksheet) {
       return;
     }
-    const headerInfo = getHeaderInfo(worksheet);
+    const headerInfo = getHeaderInfoFromRow(worksheet, 1);
     const headers = headerInfo.map;
     const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
     const needsSaeti =
       sheetName.toLowerCase() === 'forkeppni' ||
       sheetName.toLowerCase() === 'a-úrslit' ||
       sheetName.toLowerCase() === 'b-úrslit';
-    ensureHeaders(worksheet, headerInfo, [
+    ensureHeaders(worksheet, getHeaderInfo(worksheet), [
       ...(needsSaeti ? ['Sæti'] : []),
       'E1',
       'E2',
@@ -488,7 +481,7 @@ export async function updateResultsScores(
         worksheet,
         nrCol,
         trackNumber,
-        headerInfo.headerRow + 1,
+        2,
       );
       if (!row) continue;
 
