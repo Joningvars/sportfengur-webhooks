@@ -1,4 +1,4 @@
-# Uppsetning (Windows)
+# Uppsetning (Windows) — skref fyrir skref
 
 Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir `raslistar.xlsx` á staðnum.
 
@@ -13,20 +13,15 @@
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
 ## 2) Keyra forritið
-### A) Með Node
+### A) Með .exe (ráðlagt)
+```bat
+dist\sportfengur-webhooks.exe
+```
+
+### B) Með Node (ef þú ert með Node)
 ```bat
 npm install
 npm start
-```
-
-### B) Með .exe
-```bat
-npm install
-npm run build:win
-```
-Keyrið síðan:
-```bat
-dist\sportfengur-webhooks.exe
 ```
 
 ## 3) Ngrok (stöðug slóð, engin port forwarding)
@@ -65,6 +60,15 @@ Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
 ```text
 %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
 ```
+
+## 8) Handvirk einkunnaköll (valfrjálst)
+Skripturnar eru í `release\`:
+```text
+release\call_einkunn_forkeppni.bat
+release\call_einkunn_a_urslit.bat
+release\call_einkunn_b_urslit.bat
+```
+Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://eidfaxi.ngrok.app/...`).
 
 ## Athugasemdir
 - Engin port forwarding þarf ef ngrok er notað.
