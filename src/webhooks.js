@@ -10,6 +10,7 @@ import {
   appendWebhookRow,
   updateStartingListSheet,
   updateResultsScores,
+  writeDataSheet,
   removeSheet,
 } from './excel.js';
 
