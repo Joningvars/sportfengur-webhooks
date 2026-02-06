@@ -8,7 +8,7 @@
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
   - `EXCEL_PATH` (template/input, t.d. `./data/raslistar.xlsx`)
-  - `EXCEL_OUTPUT_PATH` (output mappa eða skrá; keppnisskrár fara í þessa möppu)
+  - `EXCEL_OUTPUT_PATH` (output skrá, t.d. `./data/raslistar_live.xlsx`)
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
@@ -74,8 +74,18 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://e
 - Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
-- Fyrir **hverja keppni** er skrifuð **sér XLSX skrá** (t.d. `Forkeppni.xlsx`, `A-úrslit.xlsx`, `B-úrslit.xlsx`) í möppunni sem `EXCEL_OUTPUT_PATH` vísar á.
+- Allar keppnir eru skrifaðar í **eina XLSX skrá** (separate sheets: `Forkeppni`, `A-úrslit`, `B-úrslit`, o.s.frv.).
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
+
+## Gangtegundir (mapping)
+Eftirfarandi gangtegundir eru studdar og skrifast í viðeigandi dálka:
+- `Tölt frjáls hraði` → `TFH` (E1_TFH … E5_TFH)
+- `Hægt tölt` → `HT` (E1_HT … E5_HT)
+- `Tölt með slakan taum` → `TST` (E1_TST … E5_TST)
+- `Brokk` → `BR` (E1_BR … E5_BR)
+- `Fet` → `FE` (E1_FE … E5_FE)
+- `Stökk` → `ST` (E1_ST … E5_ST)
+- `Greitt` → `GR` (E1_GR … E5_GR)
 
 ## Webhook slóðir
 ```text
