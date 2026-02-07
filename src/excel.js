@@ -345,40 +345,51 @@ export async function updateStartingListSheet(
       'E6',
     ];
     const headersForSheet = baseHeaders;
-    // Recreate the sheet every time to guarantee no duplicate rows.
-    if (worksheet) {
-      workbook.removeWorksheet(worksheet.id);
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.columns = headersForSheet.map((header) => {
+        const widthMap = {
+          'Nr.': 6,
+          Holl: 6,
+          Hönd: 6,
+          Knapi: 24,
+          LiturRas: 14,
+          'Félag knapa': 18,
+          Hestur: 28,
+          Litur: 20,
+          Aldur: 6,
+          'Félag eiganda': 18,
+          Eigandi: 22,
+          Faðir: 28,
+          Móðir: 28,
+          Lið: 10,
+          NafnBIG: 28,
+        };
+        return { header, key: header, width: widthMap[header] || 8 };
+      });
+    } else {
+      // Preserve existing columns; just ensure header row has required labels.
+      const headerRow = worksheet.getRow(1);
+      headersForSheet.forEach((header, index) => {
+        if (!headerRow.getCell(index + 1).value) {
+          headerRow.getCell(index + 1).value = header;
+        }
+      });
     }
-    worksheet = workbook.addWorksheet(sheetName);
-    worksheet.columns = headersForSheet.map((header) => {
-      const widthMap = {
-        'Nr.': 6,
-        Holl: 6,
-        Hönd: 6,
-        Knapi: 24,
-        LiturRas: 14,
-        'Félag knapa': 18,
-        Hestur: 28,
-        Litur: 20,
-        Aldur: 6,
-        'Félag eiganda': 18,
-        Eigandi: 22,
-        Faðir: 28,
-        Móðir: 28,
-        Lið: 10,
-        NafnBIG: 28,
-      };
-      return { header, key: header, width: widthMap[header] || 8 };
-    });
-    // headers are already created by worksheet.columns
-
     const headerInfo = getHeaderInfoFromRow(worksheet, 1);
     const headers = headerInfo.map;
     const nrCol = headers.get('Nr.');
 
+    const startRow = headerInfo.headerRow + 1;
+    let rowIndex = startRow;
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? '';
-      const row = worksheet.addRow([]);
+      const row =
+        nrCol
+          ? getRowByValue(worksheet, nrCol, trackNumber, startRow) ||
+            worksheet.getRow(rowIndex)
+          : worksheet.getRow(rowIndex);
+      rowIndex += 1;
 
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || '';
       const faedingarnumer = item.faedingarnumer ?? '';
