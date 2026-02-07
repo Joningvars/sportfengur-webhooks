@@ -88853,36 +88853,45 @@ async function updateStartingListSheet(startingList, sheetName = "raslistar", re
       "E6"
     ];
     const headersForSheet = baseHeaders;
-    if (worksheet) {
-      workbook.removeWorksheet(worksheet.id);
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.columns = headersForSheet.map((header) => {
+        const widthMap = {
+          "Nr.": 6,
+          Holl: 6,
+          H\u00F6nd: 6,
+          Knapi: 24,
+          LiturRas: 14,
+          "F\xE9lag knapa": 18,
+          Hestur: 28,
+          Litur: 20,
+          Aldur: 6,
+          "F\xE9lag eiganda": 18,
+          Eigandi: 22,
+          Fa\u00F0ir: 28,
+          M\u00F3\u00F0ir: 28,
+          Li\u00F0: 10,
+          NafnBIG: 28
+        };
+        return { header, key: header, width: widthMap[header] || 8 };
+      });
+    } else {
+      const headerRow = worksheet.getRow(1);
+      headersForSheet.forEach((header, index) => {
+        if (!headerRow.getCell(index + 1).value) {
+          headerRow.getCell(index + 1).value = header;
+        }
+      });
     }
-    worksheet = workbook.addWorksheet(sheetName);
-    worksheet.columns = headersForSheet.map((header) => {
-      const widthMap = {
-        "Nr.": 6,
-        Holl: 6,
-        H\u00F6nd: 6,
-        Knapi: 24,
-        LiturRas: 14,
-        "F\xE9lag knapa": 18,
-        Hestur: 28,
-        Litur: 20,
-        Aldur: 6,
-        "F\xE9lag eiganda": 18,
-        Eigandi: 22,
-        Fa\u00F0ir: 28,
-        M\u00F3\u00F0ir: 28,
-        Li\u00F0: 10,
-        NafnBIG: 28
-      };
-      return { header, key: header, width: widthMap[header] || 8 };
-    });
     const headerInfo = getHeaderInfoFromRow(worksheet, 1);
     const headers = headerInfo.map;
     const nrCol = headers.get("Nr.");
+    const startRow = headerInfo.headerRow + 1;
+    let rowIndex = startRow;
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? "";
-      const row = worksheet.addRow([]);
+      const row = nrCol ? getRowByValue(worksheet, nrCol, trackNumber, startRow) || worksheet.getRow(rowIndex) : worksheet.getRow(rowIndex);
+      rowIndex += 1;
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || "";
       const faedingarnumer = item.faedingarnumer ?? "";
       const aldur = calculateAldur(faedingarnumer);
