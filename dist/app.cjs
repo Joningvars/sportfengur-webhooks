@@ -77424,9 +77424,9 @@ var require_timers = __commonJS({
         clearTimeout(this.handle);
       };
       var afterValue = function(value) {
-        return delay2(+this).thenReturn(value);
+        return delay3(+this).thenReturn(value);
       };
-      var delay2 = Promise2.delay = function(ms, value) {
+      var delay3 = Promise2.delay = function(ms, value) {
         var ret2;
         var handle;
         if (value !== void 0) {
@@ -77448,7 +77448,7 @@ var require_timers = __commonJS({
         return ret2;
       };
       Promise2.prototype.delay = function(ms) {
-        return delay2(ms, this);
+        return delay3(ms, this);
       };
       var afterTimeout = function(promise, message, parent) {
         var err;
@@ -88563,6 +88563,9 @@ var import_exceljs = __toESM(require_excel(), 1);
 var import_promises = __toESM(require("fs/promises"), 1);
 var import_path = __toESM(require("path"), 1);
 var excelWriteQueue = Promise.resolve();
+function delay2(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 function enqueueExcelWrite(task) {
   excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
     console.error("Excel write failed:", error);
@@ -88617,7 +88620,22 @@ async function ensureWorkbook(options = {}) {
 }
 async function writeWorkbookAtomic(workbook, options = {}) {
   const { log = false, outputPath = EXCEL_OUTPUT_PATH } = options;
-  const tempPath = `${outputPath}.tmp`;
+  const writeOnce = async () => {
+    const tempPath = `${outputPath}.tmp`;
+    const buffer = await workbook.xlsx.writeBuffer();
+    await import_promises.default.writeFile(tempPath, buffer);
+    try {
+      await import_promises.default.rename(tempPath, outputPath);
+    } catch (error) {
+      if (error.code === "EPERM" || error.code === "EEXIST") {
+        await import_promises.default.unlink(outputPath).catch(() => {
+        });
+        await import_promises.default.rename(tempPath, outputPath);
+      } else {
+        throw error;
+      }
+    }
+  };
   const colorYellow = "\x1B[33m";
   const colorGreen = "\x1B[32m";
   const colorReset = "\x1B[0m";
@@ -88626,19 +88644,9 @@ async function writeWorkbookAtomic(workbook, options = {}) {
       `${colorYellow}\xDEa\xF0 er veri\xF0 a\xF0 skrifa \xED excel file'inn. Haldi\xF0 \xED hestana!${colorReset}`
     );
   }
-  const buffer = await workbook.xlsx.writeBuffer();
-  await import_promises.default.writeFile(tempPath, buffer);
-  try {
-    await import_promises.default.rename(tempPath, outputPath);
-  } catch (error) {
-    if (error.code === "EPERM" || error.code === "EEXIST") {
-      await import_promises.default.unlink(outputPath).catch(() => {
-      });
-      await import_promises.default.rename(tempPath, outputPath);
-    } else {
-      throw error;
-    }
-  }
+  await writeOnce();
+  await delay2(1e3);
+  await writeOnce();
   if (log) {
     console.log(`${colorGreen}B\xFAi\xF0 a\xF0 skrifa${colorReset}`);
   }
@@ -88788,15 +88796,20 @@ async function appendWebhookRow(eventName, payload) {
       worksheet.getColumn(7).width = 80;
     }
     const headerInfo = getHeaderInfo(worksheet);
-    ensureHeaders(worksheet, headerInfo, [
-      "timestamp",
-      "event",
-      "eventId",
-      "classId",
-      "competitionId",
-      "published",
-      "payload"
-    ], 16);
+    ensureHeaders(
+      worksheet,
+      headerInfo,
+      [
+        "timestamp",
+        "event",
+        "eventId",
+        "classId",
+        "competitionId",
+        "published",
+        "payload"
+      ],
+      16
+    );
     const row = worksheet.addRow([]);
     const set = (header, value) => {
       const col = headerInfo.map.get(header);
@@ -88920,7 +88933,10 @@ async function updateStartingListSheet(startingList, sheetName = "raslistar", re
       }
     }
     reorderWorkbookSheets(workbook);
-    await writeWorkbookAtomic(workbook, { log: false, outputPath: outputPath ?? EXCEL_OUTPUT_PATH });
+    await writeWorkbookAtomic(workbook, {
+      log: false,
+      outputPath: outputPath ?? EXCEL_OUTPUT_PATH
+    });
   });
 }
 async function updateResultsScores(results, sheetName = "raslistar", removeSheets = [], outputPath = null) {
@@ -88969,12 +88985,7 @@ async function updateResultsScores(results, sheetName = "raslistar", removeSheet
     }
     for (const result of results) {
       const trackNumber = result.vallarnumer ?? "";
-      const row = getRowByValue(
-        worksheet,
-        nrCol,
-        trackNumber,
-        2
-      );
+      const row = getRowByValue(worksheet, nrCol, trackNumber, 2);
       if (!row) continue;
       if (saetiCol) {
         row.getCell(saetiCol).value = result.saeti ?? result.fmt_saeti ?? "";
@@ -89021,7 +89032,10 @@ async function updateResultsScores(results, sheetName = "raslistar", removeSheet
       }
     }
     reorderWorkbookSheets(workbook);
-    await writeWorkbookAtomic(workbook, { log: false, outputPath: outputPath ?? EXCEL_OUTPUT_PATH });
+    await writeWorkbookAtomic(workbook, {
+      log: false,
+      outputPath: outputPath ?? EXCEL_OUTPUT_PATH
+    });
   });
 }
 async function writeDataSheet(sheetName, headers, rows) {
