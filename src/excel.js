@@ -19,8 +19,17 @@ function outputBasePath(outputPath = EXCEL_OUTPUT_PATH) {
   return resolved;
 }
 
-function getCombinedCsvPath(outputPath = EXCEL_OUTPUT_PATH) {
-  return `${outputBasePath(outputPath)}.csv`;
+function sanitizeSheetName(name) {
+  return name
+    .toString()
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
+}
+
+function getSheetCsvPath(sheetName, outputPath = EXCEL_OUTPUT_PATH) {
+  return `${outputBasePath(outputPath)}__${sanitizeSheetName(sheetName)}.csv`;
 }
 
 function csvEscape(value) {
@@ -34,7 +43,8 @@ function csvEscape(value) {
 async function writeCsvAtomic(filePath, lines) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tmpPath = `${filePath}.tmp`;
-  await fs.writeFile(tmpPath, lines.join('\n'), 'utf8');
+  const content = `\ufeff${lines.join('\r\n')}`;
+  await fs.writeFile(tmpPath, content, 'utf8');
   await fs.rename(tmpPath, filePath);
 }
 
@@ -75,13 +85,16 @@ async function exportWorkbookSheetsToCsv(
   workbook,
   outputPath = EXCEL_OUTPUT_PATH,
 ) {
-  const combinedRows = [];
-  const mergedHeaders = new Set(['Sheet']);
+  const expected = new Set();
 
   for (const worksheet of workbook.worksheets) {
     const { headerRow, cols } = getHeaderInfo(worksheet);
     if (cols.length === 0) continue;
-    cols.forEach(({ header }) => mergedHeaders.add(header));
+    const csvPath = getSheetCsvPath(worksheet.name, outputPath);
+    expected.add(path.basename(csvPath));
+
+    const lines = [];
+    lines.push(cols.map((c) => csvEscape(c.header)).join(','));
 
     for (
       let rowNum = headerRow + 1;
@@ -89,41 +102,34 @@ async function exportWorkbookSheetsToCsv(
       rowNum += 1
     ) {
       const row = worksheet.getRow(rowNum);
-      const values = Object.fromEntries(
-        cols.map(({ col, header }) => {
-          const value = row.getCell(col).value;
-          if (value == null) return [header, ''];
-          if (typeof value === 'object' && value.text != null) {
-            return [header, value.text];
-          }
-          return [header, value];
-        }),
-      );
-      const hasAny = Object.values(values).some((v) => v !== '' && v != null);
-      if (!hasAny) continue;
-      combinedRows.push({
-        Sheet: worksheet.name,
-        ...values,
+      const values = cols.map(({ col }) => {
+        const value = row.getCell(col).value;
+        if (value == null) return '';
+        if (typeof value === 'object' && value.text != null) return value.text;
+        return value;
       });
+      const hasAny = values.some((v) => v !== '' && v != null);
+      if (!hasAny) continue;
+      lines.push(values.map(csvEscape).join(','));
     }
+    await writeCsvAtomic(csvPath, lines);
   }
 
-  const headers = Array.from(mergedHeaders);
-  const lines = [];
-  lines.push(headers.map(csvEscape).join(','));
-  for (const row of combinedRows) {
-    lines.push(headers.map((header) => csvEscape(row[header] ?? '')).join(','));
-  }
-  await writeCsvAtomic(getCombinedCsvPath(outputPath), lines);
-
-  // Clean up legacy per-sheet snapshots.
+  // Clean up stale per-sheet files and old single CSV snapshot.
   const base = outputBasePath(outputPath);
   const dir = path.dirname(base);
+  const combinedCsv = `${path.basename(base)}.csv`;
   const prefix = `${path.basename(base)}__`;
   const files = await fs.readdir(dir).catch(() => []);
   await Promise.all(
     files
-      .filter((name) => name.startsWith(prefix) && name.endsWith('.csv'))
+      .filter(
+        (name) =>
+          (name.startsWith(prefix) &&
+            name.endsWith('.csv') &&
+            !expected.has(name)) ||
+          name === combinedCsv,
+      )
       .map((name) => fs.unlink(path.join(dir, name)).catch(() => {})),
   );
 }
