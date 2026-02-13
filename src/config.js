@@ -6,12 +6,7 @@ export const WEBHOOK_SECRET = process.env.SPORTFENGUR_WEBHOOK_SECRET || '';
 export const WEBHOOK_SECRET_REQUIRED =
   process.env.WEBHOOK_SECRET_REQUIRED === 'true';
 export const EXCEL_OUTPUT_PATH =
-  process.env.EXCEL_OUTPUT_PATH || './raslistar.xlsx';
-export const EXCEL_RECALC_AFTER_SAVE =
-  process.env.EXCEL_RECALC_AFTER_SAVE === 'true';
-export const EXCEL_RECALC_TIMEOUT_MS = Number(
-  process.env.EXCEL_RECALC_TIMEOUT_MS || 20000,
-);
+  process.env.EXCEL_OUTPUT_PATH || './raslistar.csv';
 export const SPORTFENGUR_BASE_URL =
   process.env.SPORTFENGUR_BASE_URL || 'https://sportfengur.com/api/v1';
 export const SPORTFENGUR_LOCALE = process.env.SPORTFENGUR_LOCALE || 'is';
