@@ -7,8 +7,9 @@
 - Fylla inn:
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
-  - `EXCEL_PATH` (template/input, t.d. `./data/raslistar.xlsx`)
   - `EXCEL_OUTPUT_PATH` (output skrá, t.d. `./data/raslistar_live.xlsx`)
+  - (valfrjálst, vMix) `EXCEL_RECALC_AFTER_SAVE=true`
+  - (valfrjálst) `EXCEL_RECALC_TIMEOUT_MS=20000`
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
@@ -74,6 +75,7 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://e
 - Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
+- Fyrir vMix + Excel formúlur: setjið `EXCEL_RECALC_AFTER_SAVE=true` á Windows vél með Excel uppsett.
 - Allar keppnir eru skrifaðar í **eina XLSX skrá** (separate sheets: `Forkeppni`, `A-úrslit`, `B-úrslit`, o.s.frv.).
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
 

@@ -77993,7 +77993,7 @@ var require_promisify = __commonJS({
         util.toFastProperties(obj2);
         return obj2;
       }
-      function promisify(callback, receiver, multiArgs) {
+      function promisify2(callback, receiver, multiArgs) {
         return makeNodePromisified(
           callback,
           receiver,
@@ -78013,7 +78013,7 @@ var require_promisify = __commonJS({
         options = Object(options);
         var receiver = options.context === void 0 ? THIS : options.context;
         var multiArgs = !!options.multiArgs;
-        var ret2 = promisify(fn, receiver, multiArgs);
+        var ret2 = promisify2(fn, receiver, multiArgs);
         util.copyDescriptors(fn, ret2, propsFilter);
         return ret2;
       };
@@ -88426,8 +88426,11 @@ var import_dotenv = __toESM(require_main(), 1);
 import_dotenv.default.config();
 var WEBHOOK_SECRET = process.env.SPORTFENGUR_WEBHOOK_SECRET || "";
 var WEBHOOK_SECRET_REQUIRED = process.env.WEBHOOK_SECRET_REQUIRED === "true";
-var EXCEL_PATH = process.env.EXCEL_PATH || "./raslistar.xlsx";
-var EXCEL_OUTPUT_PATH = process.env.EXCEL_OUTPUT_PATH || EXCEL_PATH;
+var EXCEL_OUTPUT_PATH = process.env.EXCEL_OUTPUT_PATH || "./raslistar.xlsx";
+var EXCEL_RECALC_AFTER_SAVE = process.env.EXCEL_RECALC_AFTER_SAVE === "true";
+var EXCEL_RECALC_TIMEOUT_MS = Number(
+  process.env.EXCEL_RECALC_TIMEOUT_MS || 2e4
+);
 var SPORTFENGUR_BASE_URL = process.env.SPORTFENGUR_BASE_URL || "https://sportfengur.com/api/v1";
 var SPORTFENGUR_LOCALE = process.env.SPORTFENGUR_LOCALE || "is";
 var SPORTFENGUR_USERNAME = process.env.EIDFAXI_USERNAME || "";
@@ -88437,7 +88440,9 @@ var MIN_FETCH_INTERVAL_MS = Number(
   process.env.MIN_FETCH_INTERVAL_MS || 1500
 );
 var FETCH_MAX_RETRIES = Number(process.env.FETCH_MAX_RETRIES || 3);
-var FETCH_RETRY_BASE_MS = Number(process.env.FETCH_RETRY_BASE_MS || 750);
+var FETCH_RETRY_BASE_MS = Number(
+  process.env.FETCH_RETRY_BASE_MS || 750
+);
 var DEBUG_MODE = process.env.DEBUG_MODE === "true";
 var DEBUG_LOGS = DEBUG_MODE;
 
@@ -88562,9 +88567,47 @@ async function apiGetWithRetry(path2) {
 var import_exceljs = __toESM(require_excel(), 1);
 var import_promises = __toESM(require("fs/promises"), 1);
 var import_path = __toESM(require("path"), 1);
+var import_node_child_process = require("node:child_process");
+var import_node_util = require("node:util");
 var excelWriteQueue = Promise.resolve();
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
+var hasWarnedAboutRecalcPlatform = false;
 function delay2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function recalculateWorkbookForVmix(workbookPath) {
+  if (!EXCEL_RECALC_AFTER_SAVE) return;
+  if (process.platform !== "win32") {
+    if (!hasWarnedAboutRecalcPlatform) {
+      console.warn(
+        "[excel] EXCEL_RECALC_AFTER_SAVE=true en platform er ekki Windows. Sleppi recalc."
+      );
+      hasWarnedAboutRecalcPlatform = true;
+    }
+    return;
+  }
+  const scriptPath = import_path.default.resolve(process.cwd(), "./release/recalc_excel.ps1");
+  const resolvedWorkbookPath = import_path.default.resolve(workbookPath);
+  try {
+    await execFileAsync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        scriptPath,
+        "-WorkbookPath",
+        resolvedWorkbookPath
+      ],
+      { timeout: EXCEL_RECALC_TIMEOUT_MS }
+    );
+  } catch (error) {
+    const stderr = typeof error?.stderr === "string" ? error.stderr.trim() : "";
+    throw new Error(
+      `Excel recalc failed for ${resolvedWorkbookPath}${stderr ? `: ${stderr}` : ""}`
+    );
+  }
 }
 function enqueueExcelWrite(task) {
   excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
@@ -88574,7 +88617,7 @@ function enqueueExcelWrite(task) {
 }
 async function ensureWorkbook(options = {}) {
   const {
-    inputPath = EXCEL_PATH,
+    inputPath = EXCEL_OUTPUT_PATH,
     outputPath = EXCEL_OUTPUT_PATH,
     includeWebhooks = true
   } = options;
@@ -88647,6 +88690,7 @@ async function writeWorkbookAtomic(workbook, options = {}) {
   await writeOnce();
   await delay2(1e3);
   await writeOnce();
+  await recalculateWorkbookForVmix(outputPath);
   if (log) {
     console.log(`${colorGreen}B\xFAi\xF0 a\xF0 skrifa${colorReset}`);
   }
