@@ -20,3 +20,7 @@ export const FETCH_MAX_RETRIES = Number(process.env.FETCH_MAX_RETRIES || 3);
 export const FETCH_RETRY_BASE_MS = Number(process.env.FETCH_RETRY_BASE_MS || 750);
 export const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 export const DEBUG_LOGS = DEBUG_MODE;
+const parsedEventId = Number(process.env.EVENT_ID);
+export const EVENT_ID_FILTER = Number.isInteger(parsedEventId)
+  ? parsedEventId
+  : null;

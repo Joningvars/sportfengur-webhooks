@@ -9,6 +9,7 @@
   - `EIDFAXI_PASSWORD`
   - `EXCEL_PATH` (template/input, t.d. `./data/raslistar.xlsx`)
   - `EXCEL_OUTPUT_PATH` (output skrá, t.d. `./data/raslistar_live.xlsx`)
+  - `EVENT_ID` (leyfilegt `eventId`, t.d. `70617`)
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
@@ -76,6 +77,7 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://e
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
 - Allar keppnir eru skrifaðar í **eina XLSX skrá** (separate sheets: `Forkeppni`, `A-úrslit`, `B-úrslit`, o.s.frv.).
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
+- Ef `EVENT_ID` er stillt, þá eru aðeins webhook events með þessu `eventId` unnin/skrifuð.
 
 ## Gangtegundir (mapping)
 Eftirfarandi gangtegundir eru studdar og skrifast í viðeigandi dálka:

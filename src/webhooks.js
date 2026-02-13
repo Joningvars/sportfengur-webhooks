@@ -4,6 +4,7 @@ import {
   SPORTFENGUR_LOCALE,
   DEDUPE_TTL_MS,
   DEBUG_LOGS,
+  EVENT_ID_FILTER,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
 // writing to a single output file; keep sheet names for competitions
@@ -148,6 +149,13 @@ function dedupeKey(eventName, payload) {
     payload.competitionId ?? '',
     payload.published ?? '',
   ].join('|');
+}
+
+function isAllowedEventId(payload) {
+  if (EVENT_ID_FILTER == null) {
+    return true;
+  }
+  return Number(payload.eventId) === EVENT_ID_FILTER;
 }
 
 async function resolveCompetitionId(payload) {
@@ -364,6 +372,14 @@ async function handleWebhook(req, res, eventName) {
   try {
     const start = Date.now();
     logWebhook(`[vefkrókur] vinnsla hafin: ${eventName}`);
+
+    if (!isAllowedEventId(payload)) {
+      logWebhook(
+        `[vefkrókur] sleppi: eventId=${payload.eventId ?? ''} ekki EVENT_ID=${EVENT_ID_FILTER}`,
+      );
+      return;
+    }
+
     await appendWebhookRow(eventName, payload);
 
     if (
