@@ -3,9 +3,8 @@ SportFengur Webhooks - Quick Setup (Windows)
 1) Copy .env.example -> .env and fill in:
    - EIDFAXI_USERNAME
    - EIDFAXI_PASSWORD
+   - EXCEL_PATH (template/input)
    - EXCEL_OUTPUT_PATH (live output)
-   - (optional, vMix) EXCEL_RECALC_AFTER_SAVE=true
-   - (optional) EXCEL_RECALC_TIMEOUT_MS=20000
    - PORT (default 3000)
    - (optional) WEBHOOK_SECRET_REQUIRED=true + SPORTFENGUR_WEBHOOK_SECRET
 

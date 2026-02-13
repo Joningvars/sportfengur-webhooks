@@ -3,15 +3,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const WEBHOOK_SECRET = process.env.SPORTFENGUR_WEBHOOK_SECRET || '';
-export const WEBHOOK_SECRET_REQUIRED =
-  process.env.WEBHOOK_SECRET_REQUIRED === 'true';
+export const WEBHOOK_SECRET_REQUIRED = process.env.WEBHOOK_SECRET_REQUIRED === 'true';
+export const EXCEL_PATH = process.env.EXCEL_PATH || './raslistar.xlsx';
 export const EXCEL_OUTPUT_PATH =
-  process.env.EXCEL_OUTPUT_PATH || './raslistar.xlsx';
-export const EXCEL_RECALC_AFTER_SAVE =
-  process.env.EXCEL_RECALC_AFTER_SAVE === 'true';
-export const EXCEL_RECALC_TIMEOUT_MS = Number(
-  process.env.EXCEL_RECALC_TIMEOUT_MS || 20000,
-);
+  process.env.EXCEL_OUTPUT_PATH || EXCEL_PATH;
 export const SPORTFENGUR_BASE_URL =
   process.env.SPORTFENGUR_BASE_URL || 'https://sportfengur.com/api/v1';
 export const SPORTFENGUR_LOCALE = process.env.SPORTFENGUR_LOCALE || 'is';
@@ -22,8 +17,6 @@ export const MIN_FETCH_INTERVAL_MS = Number(
   process.env.MIN_FETCH_INTERVAL_MS || 1500,
 );
 export const FETCH_MAX_RETRIES = Number(process.env.FETCH_MAX_RETRIES || 3);
-export const FETCH_RETRY_BASE_MS = Number(
-  process.env.FETCH_RETRY_BASE_MS || 750,
-);
+export const FETCH_RETRY_BASE_MS = Number(process.env.FETCH_RETRY_BASE_MS || 750);
 export const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 export const DEBUG_LOGS = DEBUG_MODE;

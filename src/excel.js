@@ -1,61 +1,12 @@
 import ExcelJS from 'exceljs';
 import fs from 'fs/promises';
 import path from 'path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import {
-  EXCEL_OUTPUT_PATH,
-  EXCEL_RECALC_AFTER_SAVE,
-  EXCEL_RECALC_TIMEOUT_MS,
-  DEBUG_LOGS,
-} from './config.js';
+import { EXCEL_PATH, EXCEL_OUTPUT_PATH, DEBUG_LOGS } from './config.js';
 
 let excelWriteQueue = Promise.resolve();
-const execFileAsync = promisify(execFile);
-let hasWarnedAboutRecalcPlatform = false;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function recalculateWorkbookForVmix(workbookPath) {
-  if (!EXCEL_RECALC_AFTER_SAVE) return;
-
-  if (process.platform !== 'win32') {
-    if (!hasWarnedAboutRecalcPlatform) {
-      console.warn(
-        '[excel] EXCEL_RECALC_AFTER_SAVE=true en platform er ekki Windows. Sleppi recalc.',
-      );
-      hasWarnedAboutRecalcPlatform = true;
-    }
-    return;
-  }
-
-  const scriptPath = path.resolve(process.cwd(), './release/recalc_excel.ps1');
-  const resolvedWorkbookPath = path.resolve(workbookPath);
-
-  try {
-    await execFileAsync(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        scriptPath,
-        '-WorkbookPath',
-        resolvedWorkbookPath,
-      ],
-      { timeout: EXCEL_RECALC_TIMEOUT_MS },
-    );
-  } catch (error) {
-    const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
-    throw new Error(
-      `Excel recalc failed for ${resolvedWorkbookPath}${
-        stderr ? `: ${stderr}` : ''
-      }`,
-    );
-  }
 }
 
 function enqueueExcelWrite(task) {
@@ -67,7 +18,7 @@ function enqueueExcelWrite(task) {
 
 async function ensureWorkbook(options = {}) {
   const {
-    inputPath = EXCEL_OUTPUT_PATH,
+    inputPath = EXCEL_PATH,
     outputPath = EXCEL_OUTPUT_PATH,
     includeWebhooks = true,
   } = options;
@@ -142,11 +93,8 @@ async function writeWorkbookAtomic(workbook, options = {}) {
     );
   }
   await writeOnce();
-  if (!EXCEL_RECALC_AFTER_SAVE) {
-    await delay(1000);
-    await writeOnce();
-  }
-  await recalculateWorkbookForVmix(outputPath);
+  await delay(1000);
+  await writeOnce();
   if (log) {
     console.log(`${colorGreen}Búið að skrifa${colorReset}`);
   }
