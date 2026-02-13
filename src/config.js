@@ -6,7 +6,7 @@ export const WEBHOOK_SECRET = process.env.SPORTFENGUR_WEBHOOK_SECRET || '';
 export const WEBHOOK_SECRET_REQUIRED =
   process.env.WEBHOOK_SECRET_REQUIRED === 'true';
 export const EXCEL_OUTPUT_PATH =
-  process.env.EXCEL_OUTPUT_PATH || './raslistar.xlsx';
+  process.env.EXCEL_OUTPUT_PATH || './raslistar.csv';
 export const SPORTFENGUR_BASE_URL =
   process.env.SPORTFENGUR_BASE_URL || 'https://sportfengur.com/api/v1';
 export const SPORTFENGUR_LOCALE = process.env.SPORTFENGUR_LOCALE || 'is';

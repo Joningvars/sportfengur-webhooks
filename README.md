@@ -1,13 +1,13 @@
 # Uppsetning (Windows) — skref fyrir skref
 
-Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir XLSX skrá á staðnum. Eftir hverja vistun er ein CSV snapshot skrá einnig endurskrifuð úr workbook.
+Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir CSV skrár á staðnum.
 
 ## 1) Stillingar
 - Afrita `.env.example` → `.env`
 - Fylla inn:
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
-  - `EXCEL_OUTPUT_PATH` (XLSX output skrá, t.d. `./data/raslistar_live.xlsx`)
+  - `EXCEL_OUTPUT_PATH` (grunn slóð fyrir CSV, t.d. `./data/raslistar_live.csv`)
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
@@ -72,8 +72,8 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://e
 ## Athugasemdir
 - Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
-- XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
-- Eftir hverja XLSX vistun er ein CSV snapshot skrá skrifuð, t.d. `raslistar_live.csv` (með `Sheet` dálki fyrir uppruna línunnar).
+- CSV skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
+- Hver "sheet" er skrifuð sem sér CSV skrá með suffix, t.d. `raslistar_live__Forkeppni.csv`.
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
 
 ## Gangtegundir (mapping)

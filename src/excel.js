@@ -1,26 +1,40 @@
-import ExcelJS from 'exceljs';
 import fs from 'fs/promises';
 import path from 'path';
 import { EXCEL_OUTPUT_PATH, DEBUG_LOGS } from './config.js';
 
-let excelWriteQueue = Promise.resolve();
+let writeQueue = Promise.resolve();
 
-function enqueueExcelWrite(task) {
-  excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
-    console.error('Excel write failed:', error);
+function enqueueWrite(task) {
+  writeQueue = writeQueue.then(task).catch((error) => {
+    console.error('CSV write failed:', error);
   });
-  return excelWriteQueue;
+  return writeQueue;
+}
+
+function sanitizeSheetName(name) {
+  return name
+    .toString()
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
 }
 
 function outputBasePath(outputPath = EXCEL_OUTPUT_PATH) {
   const resolved = path.resolve(outputPath);
   const ext = path.extname(resolved).toLowerCase();
-  if (ext === '.csv') return resolved.slice(0, -4);
+  if (ext === '.csv') {
+    return resolved.slice(0, -4);
+  }
   return resolved;
 }
 
-function getCombinedCsvPath(outputPath = EXCEL_OUTPUT_PATH) {
-  return `${outputBasePath(outputPath)}.csv`;
+function getSheetPath(sheetName, outputPath = EXCEL_OUTPUT_PATH) {
+  return `${outputBasePath(outputPath)}__${sanitizeSheetName(sheetName)}.csv`;
+}
+
+async function ensureParentDir(filePath) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
 
 function csvEscape(value) {
@@ -31,189 +45,97 @@ function csvEscape(value) {
   return stringValue;
 }
 
-async function writeCsvAtomic(filePath, lines) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else if (ch === ',') {
+      values.push(current);
+      current = '';
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else {
+      current += ch;
+    }
+  }
+
+  values.push(current);
+  return values;
+}
+
+async function readCsvTable(filePath) {
+  try {
+    const content = await fs.readFile(filePath, 'utf8');
+    const lines = content.split(/\r?\n/).filter((line) => line.length > 0);
+    if (lines.length === 0) {
+      return { headers: [], rows: [] };
+    }
+
+    const headers = parseCsvLine(lines[0]);
+    const rows = lines.slice(1).map((line) => {
+      const values = parseCsvLine(line);
+      const row = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] ?? '';
+      });
+      return row;
+    });
+
+    return { headers, rows };
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { headers: [], rows: [] };
+    }
+    throw error;
+  }
+}
+
+async function writeCsvTable(filePath, headers, rows) {
+  await ensureParentDir(filePath);
   const tmpPath = `${filePath}.tmp`;
-  await fs.writeFile(tmpPath, lines.join('\n'), 'utf8');
+  const headerLine = headers.map(csvEscape).join(',');
+  const rowLines = rows.map((row) =>
+    headers.map((header) => csvEscape(row[header] ?? '')).join(','),
+  );
+  const content = [headerLine, ...rowLines].join('\n');
+  await fs.writeFile(tmpPath, content, 'utf8');
   await fs.rename(tmpPath, filePath);
 }
 
-function getHeaderInfo(worksheet) {
-  let bestRow = 1;
-  let bestCount = 0;
-  for (let i = 1; i <= Math.min(10, worksheet.rowCount || 10); i += 1) {
-    const row = worksheet.getRow(i);
-    let count = 0;
-    row.eachCell((cell) => {
-      if (
-        cell.value !== null &&
-        cell.value !== undefined &&
-        cell.value !== ''
-      ) {
-        count += 1;
-      }
-    });
-    if (count > bestCount) {
-      bestCount = count;
-      bestRow = i;
+function mergeHeaders(existingHeaders, incomingHeaders, rows = []) {
+  const merged = [...existingHeaders];
+  const addHeader = (header) => {
+    if (header && !merged.includes(header)) {
+      merged.push(header);
     }
-  }
-  const headerRow = worksheet.getRow(bestRow);
-  const cols = [];
-  headerRow.eachCell((cell, col) => {
-    if (cell.value) {
-      cols.push({
-        col,
-        header: cell.value.toString().trim(),
-      });
-    }
-  });
-  return { headerRow: bestRow, cols };
+  };
+  incomingHeaders.forEach(addHeader);
+  rows.forEach((row) => Object.keys(row).forEach(addHeader));
+  return merged;
 }
 
-async function exportWorkbookSheetsToCsv(
-  workbook,
+async function removeCsvSheetIfExists(
+  sheetName,
   outputPath = EXCEL_OUTPUT_PATH,
 ) {
-  const combinedRows = [];
-  const mergedHeaders = new Set(['Sheet']);
-
-  for (const worksheet of workbook.worksheets) {
-    const { headerRow, cols } = getHeaderInfo(worksheet);
-    if (cols.length === 0) continue;
-    cols.forEach(({ header }) => mergedHeaders.add(header));
-
-    for (
-      let rowNum = headerRow + 1;
-      rowNum <= worksheet.rowCount;
-      rowNum += 1
-    ) {
-      const row = worksheet.getRow(rowNum);
-      const values = Object.fromEntries(
-        cols.map(({ col, header }) => {
-          const value = row.getCell(col).value;
-          if (value == null) return [header, ''];
-          if (typeof value === 'object' && value.text != null) {
-            return [header, value.text];
-          }
-          return [header, value];
-        }),
-      );
-      const hasAny = Object.values(values).some((v) => v !== '' && v != null);
-      if (!hasAny) continue;
-      combinedRows.push({
-        Sheet: worksheet.name,
-        ...values,
-      });
-    }
-  }
-
-  const headers = Array.from(mergedHeaders);
-  const lines = [];
-  lines.push(headers.map(csvEscape).join(','));
-  for (const row of combinedRows) {
-    lines.push(headers.map((header) => csvEscape(row[header] ?? '')).join(','));
-  }
-  await writeCsvAtomic(getCombinedCsvPath(outputPath), lines);
-
-  // Clean up legacy per-sheet snapshots.
-  const base = outputBasePath(outputPath);
-  const dir = path.dirname(base);
-  const prefix = `${path.basename(base)}__`;
-  const files = await fs.readdir(dir).catch(() => []);
-  await Promise.all(
-    files
-      .filter((name) => name.startsWith(prefix) && name.endsWith('.csv'))
-      .map((name) => fs.unlink(path.join(dir, name)).catch(() => {})),
-  );
-}
-
-async function ensureWorkbook(options = {}) {
-  const { outputPath = EXCEL_OUTPUT_PATH, includeWebhooks = true } = options;
-  const workbook = new ExcelJS.Workbook();
-  try {
-    await fs.access(outputPath);
-    await workbook.xlsx.readFile(outputPath);
-  } catch (error) {
-    const notFound =
-      error.code === 'ENOENT' ||
-      (typeof error.message === 'string' &&
-        error.message.includes('File not found'));
-    if (!notFound) throw error;
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    if (includeWebhooks) {
-      const webhooks = workbook.addWorksheet('Webhooks');
-      webhooks.columns = [
-        { header: 'timestamp', key: 'timestamp', width: 24 },
-        { header: 'event', key: 'event', width: 28 },
-        { header: 'eventId', key: 'eventId', width: 14 },
-        { header: 'classId', key: 'classId', width: 14 },
-        { header: 'competitionId', key: 'competitionId', width: 16 },
-        { header: 'published', key: 'published', width: 12 },
-        { header: 'payload', key: 'payload', width: 80 },
-      ];
-    }
-    await writeWorkbookAtomic(workbook, { log: false, outputPath });
-  }
-  return workbook;
-}
-
-async function writeWorkbookAtomic(workbook, options = {}) {
-  const { log = false, outputPath = EXCEL_OUTPUT_PATH } = options;
-  const tmpPath = `${outputPath}.tmp`;
-  const yellow = '\x1b[33m';
-  const green = '\x1b[32m';
-  const reset = '\x1b[0m';
-  if (log) {
-    console.log(`${yellow}Skrifa í xlsx og csv snapshot...${reset}`);
-  }
-
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  const buffer = await workbook.xlsx.writeBuffer();
-  await fs.writeFile(tmpPath, buffer);
-  await fs.rename(tmpPath, outputPath);
-  await exportWorkbookSheetsToCsv(workbook, outputPath);
-
-  if (log) {
-    console.log(`${green}Skrifun lokið${reset}`);
-  }
-}
-
-function getHeaderMapFromRow(worksheet, rowNumber = 1) {
-  const map = new Map();
-  const row = worksheet.getRow(rowNumber);
-  row.eachCell((cell, col) => {
-    if (cell.value) map.set(cell.value.toString().trim(), col);
+  const filePath = getSheetPath(sheetName, outputPath);
+  await fs.unlink(filePath).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
   });
-  return map;
-}
-
-function ensureHeaders(worksheet, headerMap, headersToEnsure, width = 8) {
-  const headerRow = worksheet.getRow(1);
-  let lastCol = headerRow.cellCount || headerRow.actualCellCount || 0;
-  for (const header of headersToEnsure) {
-    if (!headerMap.has(header)) {
-      lastCol += 1;
-      headerRow.getCell(lastCol).value = header;
-      worksheet.getColumn(lastCol).width = width;
-      headerMap.set(header, lastCol);
-    }
-  }
-}
-
-function getRowByValue(worksheet, col, value, startRow = 2) {
-  if (!value && value !== 0) return null;
-  const last = worksheet.rowCount;
-  for (let i = startRow; i <= last; i += 1) {
-    const cellValue = worksheet.getRow(i).getCell(col).value;
-    if (
-      cellValue === value ||
-      (cellValue != null && cellValue.toString() === value.toString())
-    ) {
-      return worksheet.getRow(i);
-    }
-  }
-  return null;
 }
 
 function getYearFromFaedingarnumer(value) {
@@ -264,23 +186,9 @@ function getGangtegundAbbr(value) {
 }
 
 export async function appendWebhookRow(eventName, payload) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
-    let worksheet = workbook.getWorksheet('Webhooks');
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet('Webhooks');
-      worksheet.addRow([
-        'timestamp',
-        'event',
-        'eventId',
-        'classId',
-        'competitionId',
-        'published',
-        'payload',
-      ]);
-    }
-    const headerMap = getHeaderMapFromRow(worksheet, 1);
-    ensureHeaders(worksheet, headerMap, [
+  await enqueueWrite(async () => {
+    const filePath = getSheetPath('Webhooks');
+    const baseHeaders = [
       'timestamp',
       'event',
       'eventId',
@@ -288,20 +196,21 @@ export async function appendWebhookRow(eventName, payload) {
       'competitionId',
       'published',
       'payload',
-    ]);
-    const row = worksheet.addRow([]);
-    const set = (header, value) => {
-      const col = headerMap.get(header);
-      if (col) row.getCell(col).value = value;
+    ];
+    const row = {
+      timestamp: new Date().toISOString(),
+      event: eventName,
+      eventId: payload.eventId ?? '',
+      classId: payload.classId ?? '',
+      competitionId: payload.competitionId ?? '',
+      published: payload.published ?? '',
+      payload: JSON.stringify(payload),
     };
-    set('timestamp', new Date().toISOString());
-    set('event', eventName);
-    set('eventId', payload.eventId ?? '');
-    set('classId', payload.classId ?? '');
-    set('competitionId', payload.competitionId ?? '');
-    set('published', payload.published ?? '');
-    set('payload', JSON.stringify(payload));
-    await writeWorkbookAtomic(workbook, { log: false });
+
+    const table = await readCsvTable(filePath);
+    const headers = mergeHeaders(table.headers, baseHeaders, [row]);
+    table.rows.push(row);
+    await writeCsvTable(filePath, headers, table.rows);
   });
 }
 
@@ -311,17 +220,17 @@ export async function updateStartingListSheet(
   removeSheets = [],
   outputPath = null,
 ) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook(
-      outputPath ? { outputPath, includeWebhooks: false } : undefined,
-    );
-    for (const name of removeSheets || []) {
-      if (!name || name === sheetName) continue;
-      const ws = workbook.getWorksheet(name);
-      if (ws) workbook.removeWorksheet(ws.id);
+  await enqueueWrite(async () => {
+    const targetPath = outputPath ?? EXCEL_OUTPUT_PATH;
+    if (Array.isArray(removeSheets)) {
+      for (const name of removeSheets) {
+        if (name && name !== sheetName) {
+          await removeCsvSheetIfExists(name, targetPath);
+        }
+      }
     }
 
-    let worksheet = workbook.getWorksheet(sheetName);
+    const filePath = getSheetPath(sheetName, targetPath);
     const needsSaeti =
       sheetName.toLowerCase() === 'forkeppni' ||
       sheetName.toLowerCase() === 'a-úrslit' ||
@@ -348,24 +257,15 @@ export async function updateStartingListSheet(
       'E6',
     ];
 
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet(sheetName);
-      worksheet.addRow(baseHeaders);
-    }
-
-    const headers = getHeaderMapFromRow(worksheet, 1);
-    ensureHeaders(worksheet, headers, baseHeaders);
-    const nrCol = headers.get('Nr.');
-    let rowIndex = 2;
+    const table = await readCsvTable(filePath);
+    const headers = mergeHeaders(table.headers, baseHeaders);
+    const indexByNr = new Map();
+    table.rows.forEach((row, index) => {
+      indexByNr.set(String(row['Nr.'] ?? ''), index);
+    });
 
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? '';
-      const row =
-        nrCol && getRowByValue(worksheet, nrCol, trackNumber, 2)
-          ? getRowByValue(worksheet, nrCol, trackNumber, 2)
-          : worksheet.getRow(rowIndex);
-      rowIndex += 1;
-
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || '';
       const faedingarnumer = item.faedingarnumer ?? '';
       const aldur = calculateAldur(faedingarnumer);
@@ -373,7 +273,7 @@ export async function updateStartingListSheet(
         item.knapi_fullt_nafn ?? item.knapi_fulltnafn ?? item.knapi_nafn ?? '';
       const riderNameUpper = riderName ? riderName.toUpperCase() : '';
 
-      const cells = {
+      const rowData = {
         'Nr.': trackNumber,
         ...(needsSaeti ? { Sæti: '' } : {}),
         Holl: item.holl ?? '',
@@ -392,16 +292,19 @@ export async function updateStartingListSheet(
         NafnBIG: riderNameUpper,
       };
 
-      for (const [header, value] of Object.entries(cells)) {
-        const col = headers.get(header);
-        if (col) row.getCell(col).value = value;
+      const key = String(trackNumber);
+      if (indexByNr.has(key)) {
+        Object.assign(table.rows[indexByNr.get(key)], rowData);
+      } else {
+        table.rows.push(rowData);
+        indexByNr.set(key, table.rows.length - 1);
       }
     }
 
-    await writeWorkbookAtomic(workbook, {
-      log: false,
-      outputPath: outputPath ?? EXCEL_OUTPUT_PATH,
-    });
+    await writeCsvTable(filePath, headers, table.rows);
+    if (DEBUG_LOGS) {
+      console.log(`[csv] Updated ${sheetName} -> ${filePath}`);
+    }
   });
 }
 
@@ -411,25 +314,28 @@ export async function updateResultsScores(
   removeSheets = [],
   outputPath = null,
 ) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook(
-      outputPath ? { outputPath, includeWebhooks: false } : undefined,
-    );
-    for (const name of removeSheets || []) {
-      if (!name || name === sheetName) continue;
-      const ws = workbook.getWorksheet(name);
-      if (ws) workbook.removeWorksheet(ws.id);
+  await enqueueWrite(async () => {
+    const targetPath = outputPath ?? EXCEL_OUTPUT_PATH;
+    if (Array.isArray(removeSheets)) {
+      for (const name of removeSheets) {
+        if (name && name !== sheetName) {
+          await removeCsvSheetIfExists(name, targetPath);
+        }
+      }
     }
 
-    const worksheet = workbook.getWorksheet(sheetName);
-    if (!worksheet) return;
+    const filePath = getSheetPath(sheetName, targetPath);
+    const table = await readCsvTable(filePath);
+    if (table.rows.length === 0 && table.headers.length === 0) {
+      return;
+    }
 
-    const headers = getHeaderMapFromRow(worksheet, 1);
+    const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
     const needsSaeti =
       sheetName.toLowerCase() === 'forkeppni' ||
       sheetName.toLowerCase() === 'a-úrslit' ||
       sheetName.toLowerCase() === 'b-úrslit';
-    ensureHeaders(worksheet, headers, [
+    let headers = mergeHeaders(table.headers, [
       ...(needsSaeti ? ['Sæti'] : []),
       'E1',
       'E2',
@@ -438,17 +344,19 @@ export async function updateResultsScores(
       'E5',
       'E6',
     ]);
-
-    const nrCol = headers.get('Nr.');
-    if (!nrCol) return;
-    const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
+    const indexByNr = new Map();
+    table.rows.forEach((row, index) => {
+      indexByNr.set(String(row['Nr.'] ?? ''), index);
+    });
 
     for (const result of results) {
-      const row = getRowByValue(worksheet, nrCol, result.vallarnumer ?? '', 2);
-      if (!row) continue;
-      if (needsSaeti && headers.get('Sæti')) {
-        row.getCell(headers.get('Sæti')).value =
-          result.saeti ?? result.fmt_saeti ?? '';
+      const key = String(result.vallarnumer ?? '');
+      const rowIndex = indexByNr.get(key);
+      if (rowIndex == null) continue;
+      const row = table.rows[rowIndex];
+
+      if (needsSaeti) {
+        row['Sæti'] = result.saeti ?? result.fmt_saeti ?? '';
       }
       const judges = Array.isArray(result.einkunnir_domara)
         ? result.einkunnir_domara
@@ -456,14 +364,12 @@ export async function updateResultsScores(
       const scores = judges
         .slice(0, 5)
         .map((j) => parseJudgeScore(j?.domari_adaleinkunn));
-      row.getCell(headers.get('E1')).value = roundScore(scores[0] ?? null);
-      row.getCell(headers.get('E2')).value = roundScore(scores[1] ?? null);
-      row.getCell(headers.get('E3')).value = roundScore(scores[2] ?? null);
-      row.getCell(headers.get('E4')).value = roundScore(scores[3] ?? null);
-      row.getCell(headers.get('E5')).value = roundScore(scores[4] ?? null);
-      row.getCell(headers.get('E6')).value = roundScore(
-        parseJudgeScore(result.keppandi_medaleinkunn),
-      );
+      row.E1 = roundScore(scores[0] ?? null);
+      row.E2 = roundScore(scores[1] ?? null);
+      row.E3 = roundScore(scores[2] ?? null);
+      row.E4 = roundScore(scores[3] ?? null);
+      row.E5 = roundScore(scores[4] ?? null);
+      row.E6 = roundScore(parseJudgeScore(result.keppandi_medaleinkunn));
 
       if (!isForkeppni && judges.length) {
         for (let j = 0; j < Math.min(judges.length, 5); j += 1) {
@@ -474,56 +380,29 @@ export async function updateResultsScores(
             const abbr = getGangtegundAbbr(detail?.gangtegund);
             if (!abbr) continue;
             const header = `E${j + 1}_${abbr}`;
-            ensureHeaders(worksheet, headers, [header]);
-            row.getCell(headers.get(header)).value = roundScore(
-              parseJudgeScore(detail?.einkunn),
-            );
+            headers = mergeHeaders(headers, [header]);
+            row[header] = roundScore(parseJudgeScore(detail?.einkunn));
           }
         }
       }
     }
 
-    await writeWorkbookAtomic(workbook, {
-      log: false,
-      outputPath: outputPath ?? EXCEL_OUTPUT_PATH,
-    });
+    await writeCsvTable(filePath, headers, table.rows);
   });
 }
 
 export async function writeDataSheet(sheetName, headers, rows) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
-    let worksheet = workbook.getWorksheet(sheetName);
-    if (!worksheet) {
-      worksheet = workbook.addWorksheet(sheetName);
-      worksheet.addRow(headers);
-    }
-    const headerMap = getHeaderMapFromRow(worksheet, 1);
-    ensureHeaders(worksheet, headerMap, headers);
-
-    for (const rowData of rows) {
-      const row = worksheet.addRow([]);
-      for (const [header, value] of Object.entries(rowData)) {
-        const col = headerMap.get(header);
-        if (col) row.getCell(col).value = value;
-      }
-    }
-
-    await writeWorkbookAtomic(workbook, { log: false });
+  await enqueueWrite(async () => {
+    const filePath = getSheetPath(sheetName);
+    const table = await readCsvTable(filePath);
+    const mergedHeaders = mergeHeaders(table.headers, headers, rows);
+    table.rows.push(...rows);
+    await writeCsvTable(filePath, mergedHeaders, table.rows);
   });
 }
 
 export async function removeSheet(sheetName) {
-  await enqueueExcelWrite(async () => {
-    const workbook = await ensureWorkbook();
-    const ws = workbook.getWorksheet(sheetName);
-    if (ws) {
-      workbook.removeWorksheet(ws.id);
-      await writeWorkbookAtomic(workbook, { log: false });
-    }
+  await enqueueWrite(async () => {
+    await removeCsvSheetIfExists(sheetName);
   });
-}
-
-if (DEBUG_LOGS) {
-  console.log('[excel] XLSX master + CSV snapshot mode enabled');
 }

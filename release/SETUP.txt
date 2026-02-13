@@ -3,7 +3,7 @@ SportFengur Webhooks - Quick Setup (Windows)
 1) Copy .env.example -> .env and fill in:
    - EIDFAXI_USERNAME
    - EIDFAXI_PASSWORD
-   - EXCEL_OUTPUT_PATH (XLSX output path, e.g. ./raslistar_live.xlsx)
+   - EXCEL_OUTPUT_PATH (CSV output base path, e.g. ./raslistar_live.csv)
    - PORT (default 3000)
    - (optional) WEBHOOK_SECRET_REQUIRED=true + SPORTFENGUR_WEBHOOK_SECRET
 
