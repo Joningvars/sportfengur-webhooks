@@ -88440,6 +88440,8 @@ var FETCH_MAX_RETRIES = Number(process.env.FETCH_MAX_RETRIES || 3);
 var FETCH_RETRY_BASE_MS = Number(process.env.FETCH_RETRY_BASE_MS || 750);
 var DEBUG_MODE = process.env.DEBUG_MODE === "true";
 var DEBUG_LOGS = DEBUG_MODE;
+var parsedEventId = Number(process.env.EVENT_ID);
+var EVENT_ID_FILTER = Number.isInteger(parsedEventId) ? parsedEventId : null;
 
 // src/logger.js
 function sanitizeArgs(args) {
@@ -89143,6 +89145,12 @@ function dedupeKey(eventName, payload) {
     payload.published ?? ""
   ].join("|");
 }
+function isAllowedEventId(payload) {
+  if (EVENT_ID_FILTER == null) {
+    return true;
+  }
+  return Number(payload.eventId) === EVENT_ID_FILTER;
+}
 async function resolveCompetitionId(payload) {
   if (payload.competitionId != null) {
     competitionIdByClassId.set(payload.classId, payload.competitionId);
@@ -89340,6 +89348,12 @@ async function handleWebhook(req, res, eventName) {
   try {
     const start = Date.now();
     logWebhook(`[vefkr\xF3kur] vinnsla hafin: ${eventName}`);
+    if (!isAllowedEventId(payload)) {
+      logWebhook(
+        `[vefkr\xF3kur] sleppi: eventId=${payload.eventId ?? ""} ekki EVENT_ID=${EVENT_ID_FILTER}`
+      );
+      return;
+    }
     await appendWebhookRow(eventName, payload);
     if (eventName === "event_raslisti_birtur" || eventName === "event_naesti_sprettur") {
       await handleEventRaslisti(payload);
