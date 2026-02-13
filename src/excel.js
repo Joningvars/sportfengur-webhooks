@@ -5,6 +5,10 @@ import { EXCEL_PATH, EXCEL_OUTPUT_PATH, DEBUG_LOGS } from './config.js';
 
 let excelWriteQueue = Promise.resolve();
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function enqueueExcelWrite(task) {
   excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
     console.error('Excel write failed:', error);
@@ -65,7 +69,21 @@ async function ensureWorkbook(options = {}) {
 
 async function writeWorkbookAtomic(workbook, options = {}) {
   const { log = false, outputPath = EXCEL_OUTPUT_PATH } = options;
-  const tempPath = `${outputPath}.tmp`;
+  const writeOnce = async () => {
+    const tempPath = `${outputPath}.tmp`;
+    const buffer = await workbook.xlsx.writeBuffer();
+    await fs.writeFile(tempPath, buffer);
+    try {
+      await fs.rename(tempPath, outputPath);
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EEXIST') {
+        await fs.unlink(outputPath).catch(() => {});
+        await fs.rename(tempPath, outputPath);
+      } else {
+        throw error;
+      }
+    }
+  };
   const colorYellow = '\x1b[33m';
   const colorGreen = '\x1b[32m';
   const colorReset = '\x1b[0m';
@@ -74,18 +92,9 @@ async function writeWorkbookAtomic(workbook, options = {}) {
       `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
     );
   }
-  const buffer = await workbook.xlsx.writeBuffer();
-  await fs.writeFile(tempPath, buffer);
-  try {
-    await fs.rename(tempPath, outputPath);
-  } catch (error) {
-    if (error.code === 'EPERM' || error.code === 'EEXIST') {
-      await fs.unlink(outputPath).catch(() => {});
-      await fs.rename(tempPath, outputPath);
-    } else {
-      throw error;
-    }
-  }
+  await writeOnce();
+  await delay(1000);
+  await writeOnce();
   if (log) {
     console.log(`${colorGreen}Búið að skrifa${colorReset}`);
   }
@@ -269,15 +278,20 @@ export async function appendWebhookRow(eventName, payload) {
       worksheet.getColumn(7).width = 80;
     }
     const headerInfo = getHeaderInfo(worksheet);
-    ensureHeaders(worksheet, headerInfo, [
-      'timestamp',
-      'event',
-      'eventId',
-      'classId',
-      'competitionId',
-      'published',
-      'payload',
-    ], 16);
+    ensureHeaders(
+      worksheet,
+      headerInfo,
+      [
+        'timestamp',
+        'event',
+        'eventId',
+        'classId',
+        'competitionId',
+        'published',
+        'payload',
+      ],
+      16,
+    );
     const row = worksheet.addRow([]);
     const set = (header, value) => {
       const col = headerInfo.map.get(header);
@@ -303,9 +317,7 @@ export async function updateStartingListSheet(
 ) {
   await enqueueExcelWrite(async () => {
     const workbook = await ensureWorkbook(
-      outputPath
-        ? { outputPath, includeWebhooks: false }
-        : undefined,
+      outputPath ? { outputPath, includeWebhooks: false } : undefined,
     );
     if (sheetName !== 'raslistar') {
       removeWorksheetIfExists(workbook, 'raslistar');
@@ -384,11 +396,10 @@ export async function updateStartingListSheet(
     let rowIndex = startRow;
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? '';
-      const row =
-        nrCol
-          ? getRowByValue(worksheet, nrCol, trackNumber, startRow) ||
-            worksheet.getRow(rowIndex)
-          : worksheet.getRow(rowIndex);
+      const row = nrCol
+        ? getRowByValue(worksheet, nrCol, trackNumber, startRow) ||
+          worksheet.getRow(rowIndex)
+        : worksheet.getRow(rowIndex);
       rowIndex += 1;
 
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || '';
@@ -398,24 +409,24 @@ export async function updateStartingListSheet(
         item.knapi_fullt_nafn ?? item.knapi_fulltnafn ?? item.knapi_nafn ?? '';
       const riderNameUpper = riderName ? riderName.toUpperCase() : '';
 
-    const cells = {
-      'Nr.': trackNumber,
-      ...(needsSaeti ? { Sæti: '' } : {}),
-      Holl: item.holl ?? '',
-      Hönd: item.hond ?? '',
-      Knapi: riderName,
-      LiturRas:
-        item.rodun_litur_numer != null && item.rodun_litur
-          ? `${item.rodun_litur_numer} - ${item.rodun_litur}`
-          : (item.rodun_litur ?? ''),
-      'Félag knapa': item.adildarfelag_knapa ?? '',
-      Hestur: horseFullName,
-      Litur: item.hross_litur ?? '',
-      Aldur: aldur,
-      'Félag eiganda': item.adildarfelag_eiganda ?? '',
-      Lið: '',
-      NafnBIG: riderNameUpper,
-    };
+      const cells = {
+        'Nr.': trackNumber,
+        ...(needsSaeti ? { Sæti: '' } : {}),
+        Holl: item.holl ?? '',
+        Hönd: item.hond ?? '',
+        Knapi: riderName,
+        LiturRas:
+          item.rodun_litur_numer != null && item.rodun_litur
+            ? `${item.rodun_litur_numer} - ${item.rodun_litur}`
+            : (item.rodun_litur ?? ''),
+        'Félag knapa': item.adildarfelag_knapa ?? '',
+        Hestur: horseFullName,
+        Litur: item.hross_litur ?? '',
+        Aldur: aldur,
+        'Félag eiganda': item.adildarfelag_eiganda ?? '',
+        Lið: '',
+        NafnBIG: riderNameUpper,
+      };
 
       for (const [header, value] of Object.entries(cells)) {
         const col = headers.get(header);
@@ -423,11 +434,13 @@ export async function updateStartingListSheet(
           row.getCell(col).value = value;
         }
       }
-
     }
 
     reorderWorkbookSheets(workbook);
-    await writeWorkbookAtomic(workbook, { log: false, outputPath: outputPath ?? EXCEL_OUTPUT_PATH });
+    await writeWorkbookAtomic(workbook, {
+      log: false,
+      outputPath: outputPath ?? EXCEL_OUTPUT_PATH,
+    });
   });
 }
 
@@ -439,9 +452,7 @@ export async function updateResultsScores(
 ) {
   await enqueueExcelWrite(async () => {
     const workbook = await ensureWorkbook(
-      outputPath
-        ? { outputPath, includeWebhooks: false }
-        : undefined,
+      outputPath ? { outputPath, includeWebhooks: false } : undefined,
     );
     if (sheetName !== 'raslistar') {
       removeWorksheetIfExists(workbook, 'raslistar');
@@ -488,17 +499,11 @@ export async function updateResultsScores(
 
     for (const result of results) {
       const trackNumber = result.vallarnumer ?? '';
-      const row = getRowByValue(
-        worksheet,
-        nrCol,
-        trackNumber,
-        2,
-      );
+      const row = getRowByValue(worksheet, nrCol, trackNumber, 2);
       if (!row) continue;
 
       if (saetiCol) {
-        row.getCell(saetiCol).value =
-          result.saeti ?? result.fmt_saeti ?? '';
+        row.getCell(saetiCol).value = result.saeti ?? result.fmt_saeti ?? '';
       }
       const judges = Array.isArray(result.einkunnir_domara)
         ? result.einkunnir_domara
@@ -555,7 +560,10 @@ export async function updateResultsScores(
     }
 
     reorderWorkbookSheets(workbook);
-    await writeWorkbookAtomic(workbook, { log: false, outputPath: outputPath ?? EXCEL_OUTPUT_PATH });
+    await writeWorkbookAtomic(workbook, {
+      log: false,
+      outputPath: outputPath ?? EXCEL_OUTPUT_PATH,
+    });
   });
 }
 
