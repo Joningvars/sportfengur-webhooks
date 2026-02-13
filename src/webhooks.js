@@ -202,7 +202,7 @@ async function handleEventRaslisti(payload) {
   const startingList = Array.isArray(data?.raslisti) ? data.raslisti : [];
   logWebhook(`[ráslisti] Fjöldi í ráslista: ${startingList.length}`);
   logWebhook(
-    `${colorYellow}Það er verið að skrifa í CSV skrár. Haldið í hestana!${colorReset}`,
+    `${colorYellow}Það er verið að skrifa í XLSX (og uppfæra CSV snapshot). Haldið í hestana!${colorReset}`,
   );
   await updateStartingListSheet(
     startingList,
@@ -318,7 +318,7 @@ async function handleEventEinkunnSaeti(payload) {
     logWebhook('[einkunnir] response', data);
   }
   logWebhook(
-    `${colorYellow}Það er verið að skrifa í CSV skrár. Haldið í hestana!${colorReset}`,
+    `${colorYellow}Það er verið að skrifa í XLSX (og uppfæra CSV snapshot). Haldið í hestana!${colorReset}`,
   );
   await updateResultsScores(
     data?.einkunnir || [],
