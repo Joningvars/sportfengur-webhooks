@@ -1,6 +1,6 @@
 # Uppsetning (Windows) — skref fyrir skref
 
-Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir XLSX skrá á staðnum. Eftir hverja vistun eru CSV snapshot skrár (ein per sheet) einnig endurskrifaðar úr workbook.
+Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir XLSX skrá á staðnum. Eftir hverja vistun er ein CSV snapshot skrá einnig endurskrifuð úr workbook.
 
 ## 1) Stillingar
 - Afrita `.env.example` → `.env`
@@ -73,8 +73,7 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://e
 - Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
 - XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
-- Eftir hverja XLSX vistun er hver "sheet" skrifuð í sér CSV snapshot skrá, t.d. `raslistar_live.xlsx__Forkeppni.csv`.
-- CSV snapshot er skrifuð sem UTF-8 með BOM svo íslenskir stafir birtist rétt í Windows/vMix lesurum.
+- Eftir hverja XLSX vistun er ein CSV snapshot skrá skrifuð, t.d. `raslistar_live.csv` (með `Sheet` dálki fyrir uppruna línunnar).
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
 
 ## Gangtegundir (mapping)
