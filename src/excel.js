@@ -1,141 +1,262 @@
+import ExcelJS from 'exceljs';
 import fs from 'fs/promises';
 import path from 'path';
-import { EXCEL_OUTPUT_PATH, DEBUG_LOGS } from './config.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import {
+  EXCEL_OUTPUT_PATH,
+  EXCEL_RECALC_AFTER_SAVE,
+  EXCEL_RECALC_TIMEOUT_MS,
+  DEBUG_LOGS,
+} from './config.js';
 
-let writeQueue = Promise.resolve();
+let excelWriteQueue = Promise.resolve();
+const execFileAsync = promisify(execFile);
+let hasWarnedAboutRecalcPlatform = false;
 
-function enqueueWrite(task) {
-  writeQueue = writeQueue.then(task).catch((error) => {
-    console.error('CSV write failed:', error);
-  });
-  return writeQueue;
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function sanitizeSheetName(name) {
-  return name
-    .toString()
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
-    .replace(/\s+/g, '_')
-    .slice(0, 80);
-}
+async function recalculateWorkbookForVmix(workbookPath) {
+  if (!EXCEL_RECALC_AFTER_SAVE) return;
 
-function outputBasePath(outputPath = EXCEL_OUTPUT_PATH) {
-  const resolved = path.resolve(outputPath);
-  const ext = path.extname(resolved).toLowerCase();
-  if (ext === '.csv') {
-    return resolved.slice(0, -4);
-  }
-  return resolved;
-}
-
-function getSheetPath(sheetName, outputPath = EXCEL_OUTPUT_PATH) {
-  return `${outputBasePath(outputPath)}__${sanitizeSheetName(sheetName)}.csv`;
-}
-
-async function ensureParentDir(filePath) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-}
-
-function csvEscape(value) {
-  const stringValue = value == null ? '' : String(value);
-  if (/[",\n\r]/.test(stringValue)) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-  return stringValue;
-}
-
-function parseCsvLine(line) {
-  const values = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        current += ch;
-      }
-    } else if (ch === ',') {
-      values.push(current);
-      current = '';
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else {
-      current += ch;
+  if (process.platform !== 'win32') {
+    if (!hasWarnedAboutRecalcPlatform) {
+      console.warn(
+        '[excel] EXCEL_RECALC_AFTER_SAVE=true en platform er ekki Windows. Sleppi recalc.',
+      );
+      hasWarnedAboutRecalcPlatform = true;
     }
+    return;
   }
 
-  values.push(current);
-  return values;
-}
+  const scriptPath = path.resolve(process.cwd(), './release/recalc_excel.ps1');
+  const resolvedWorkbookPath = path.resolve(workbookPath);
 
-async function readCsvTable(filePath) {
   try {
-    const content = await fs.readFile(filePath, 'utf8');
-    const lines = content.split(/\r?\n/).filter((line) => line.length > 0);
-    if (lines.length === 0) {
-      return { headers: [], rows: [] };
-    }
-
-    const headers = parseCsvLine(lines[0]);
-    const rows = lines.slice(1).map((line) => {
-      const values = parseCsvLine(line);
-      const row = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index] ?? '';
-      });
-      return row;
-    });
-
-    return { headers, rows };
+    await execFileAsync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-WorkbookPath',
+        resolvedWorkbookPath,
+      ],
+      { timeout: EXCEL_RECALC_TIMEOUT_MS },
+    );
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      return { headers: [], rows: [] };
-    }
-    throw error;
+    const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
+    throw new Error(
+      `Excel recalc failed for ${resolvedWorkbookPath}${
+        stderr ? `: ${stderr}` : ''
+      }`,
+    );
   }
 }
 
-async function writeCsvTable(filePath, headers, rows) {
-  await ensureParentDir(filePath);
-  const tmpPath = `${filePath}.tmp`;
-  const headerLine = headers.map(csvEscape).join(',');
-  const rowLines = rows.map((row) =>
-    headers.map((header) => csvEscape(row[header] ?? '')).join(','),
-  );
-  const content = [headerLine, ...rowLines].join('\n');
-  await fs.writeFile(tmpPath, content, 'utf8');
-  await fs.rename(tmpPath, filePath);
+function enqueueExcelWrite(task) {
+  excelWriteQueue = excelWriteQueue.then(task).catch((error) => {
+    console.error('Excel write failed:', error);
+  });
+  return excelWriteQueue;
 }
 
-function mergeHeaders(existingHeaders, incomingHeaders, rows = []) {
-  const merged = [...existingHeaders];
-  const addHeader = (header) => {
-    if (header && !merged.includes(header)) {
-      merged.push(header);
+async function ensureWorkbook(options = {}) {
+  const {
+    inputPath = EXCEL_OUTPUT_PATH,
+    outputPath = EXCEL_OUTPUT_PATH,
+    includeWebhooks = true,
+  } = options;
+  const workbook = new ExcelJS.Workbook();
+  try {
+    const preferredOutput =
+      outputPath && outputPath !== inputPath ? outputPath : null;
+    if (preferredOutput) {
+      try {
+        await fs.access(preferredOutput);
+        await workbook.xlsx.readFile(preferredOutput);
+        return workbook;
+      } catch {}
+    }
+    await fs.access(inputPath);
+    await workbook.xlsx.readFile(inputPath);
+  } catch (error) {
+    const notFound =
+      error.code === 'ENOENT' ||
+      (typeof error.message === 'string' &&
+        error.message.includes('File not found'));
+    if (!notFound) {
+      throw error;
+    }
+    const inputDir = path.dirname(inputPath);
+    const outputDir = path.dirname(outputPath);
+    await fs.mkdir(inputDir, { recursive: true });
+    if (outputDir && outputDir !== inputDir) {
+      await fs.mkdir(outputDir, { recursive: true });
+    }
+    if (includeWebhooks) {
+      const webhooks = workbook.addWorksheet('Webhooks');
+      webhooks.columns = [
+        { header: 'timestamp', key: 'timestamp', width: 24 },
+        { header: 'event', key: 'event', width: 28 },
+        { header: 'eventId', key: 'eventId', width: 14 },
+        { header: 'classId', key: 'classId', width: 14 },
+        { header: 'competitionId', key: 'competitionId', width: 16 },
+        { header: 'published', key: 'published', width: 12 },
+        { header: 'payload', key: 'payload', width: 80 },
+      ];
+    }
+    await writeWorkbookAtomic(workbook, { log: false, outputPath });
+  }
+
+  return workbook;
+}
+
+async function writeWorkbookAtomic(workbook, options = {}) {
+  const { log = false, outputPath = EXCEL_OUTPUT_PATH } = options;
+  const writeOnce = async () => {
+    const tempPath = `${outputPath}.tmp`;
+    const buffer = await workbook.xlsx.writeBuffer();
+    await fs.writeFile(tempPath, buffer);
+    try {
+      await fs.rename(tempPath, outputPath);
+    } catch (error) {
+      if (error.code === 'EPERM' || error.code === 'EEXIST') {
+        await fs.unlink(outputPath).catch(() => {});
+        await fs.rename(tempPath, outputPath);
+      } else {
+        throw error;
+      }
     }
   };
-  incomingHeaders.forEach(addHeader);
-  rows.forEach((row) => Object.keys(row).forEach(addHeader));
-  return merged;
+  const colorYellow = '\x1b[33m';
+  const colorGreen = '\x1b[32m';
+  const colorReset = '\x1b[0m';
+  if (log) {
+    console.log(
+      `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
+    );
+  }
+  await writeOnce();
+  if (!EXCEL_RECALC_AFTER_SAVE) {
+    await delay(1000);
+    await writeOnce();
+  }
+  await recalculateWorkbookForVmix(outputPath);
+  if (log) {
+    console.log(`${colorGreen}Búið að skrifa${colorReset}`);
+  }
 }
 
-async function removeCsvSheetIfExists(
-  sheetName,
-  outputPath = EXCEL_OUTPUT_PATH,
-) {
-  const filePath = getSheetPath(sheetName, outputPath);
-  await fs.unlink(filePath).catch((error) => {
-    if (error.code !== 'ENOENT') throw error;
+function getHeaderInfo(worksheet) {
+  let bestRow = 1;
+  let bestCount = 0;
+  for (let i = 1; i <= Math.min(10, worksheet.rowCount || 10); i += 1) {
+    const row = worksheet.getRow(i);
+    let count = 0;
+    row.eachCell((cell) => {
+      if (cell.value) count += 1;
+    });
+    if (count > bestCount) {
+      bestCount = count;
+      bestRow = i;
+    }
+  }
+  const headerRow = worksheet.getRow(bestRow);
+  const map = new Map();
+  headerRow.eachCell((cell, col) => {
+    if (cell.value) {
+      map.set(cell.value.toString().trim(), col);
+    }
   });
+  return { map, headerRow: bestRow };
+}
+
+function getHeaderInfoFromRow(worksheet, rowNumber) {
+  const headerRow = worksheet.getRow(rowNumber);
+  const map = new Map();
+  headerRow.eachCell((cell, col) => {
+    if (cell.value) {
+      map.set(cell.value.toString().trim(), col);
+    }
+  });
+  return { map, headerRow: rowNumber };
+}
+
+const PREFERRED_SHEET_ORDER = ['Forkeppni', 'B-úrslit', 'A-úrslit'];
+
+function reorderWorkbookSheets(workbook) {
+  if (!Array.isArray(workbook._worksheets)) return;
+  const sheets = workbook.worksheets;
+  const byName = new Map(sheets.map((ws) => [ws.name.toLowerCase(), ws]));
+  const ordered = [];
+
+  for (const name of PREFERRED_SHEET_ORDER) {
+    const ws = byName.get(name.toLowerCase());
+    if (ws) ordered.push(ws);
+  }
+
+  for (const ws of sheets) {
+    if (!ordered.includes(ws) && ws.name !== 'Webhooks') {
+      ordered.push(ws);
+    }
+  }
+
+  const webhooks = workbook.getWorksheet('Webhooks');
+  if (webhooks) ordered.push(webhooks);
+
+  workbook._worksheets = [null, ...ordered];
+  ordered.forEach((ws, i) => {
+    ws.id = i + 1;
+  });
+}
+
+function removeWorksheetIfExists(workbook, sheetName) {
+  const sheet = workbook.getWorksheet(sheetName);
+  if (sheet) {
+    workbook.removeWorksheet(sheet.id);
+  }
+}
+
+export async function removeSheet(sheetName) {
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    removeWorksheetIfExists(workbook, sheetName);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
+  });
+}
+
+function ensureHeaders(worksheet, headerInfo, headersToEnsure, width = 8) {
+  const headerRow = worksheet.getRow(headerInfo.headerRow);
+  let lastCol = headerRow.cellCount || headerRow.actualCellCount || 0;
+  for (const header of headersToEnsure) {
+    if (!headerInfo.map.has(header)) {
+      lastCol += 1;
+      headerRow.getCell(lastCol).value = header;
+      worksheet.getColumn(lastCol).width = width;
+      headerInfo.map.set(header, lastCol);
+    }
+  }
+}
+
+function getRowByValue(worksheet, col, value, startRow = 2) {
+  if (!value && value !== 0) return null;
+  const last = worksheet.rowCount;
+  for (let i = startRow; i <= last; i += 1) {
+    const cellValue = worksheet.getRow(i).getCell(col).value;
+    if (
+      cellValue === value ||
+      (cellValue != null && cellValue.toString() === value.toString())
+    ) {
+      return worksheet.getRow(i);
+    }
+  }
+  return null;
 }
 
 function getYearFromFaedingarnumer(value) {
@@ -186,31 +307,57 @@ function getGangtegundAbbr(value) {
 }
 
 export async function appendWebhookRow(eventName, payload) {
-  await enqueueWrite(async () => {
-    const filePath = getSheetPath('Webhooks');
-    const baseHeaders = [
-      'timestamp',
-      'event',
-      'eventId',
-      'classId',
-      'competitionId',
-      'published',
-      'payload',
-    ];
-    const row = {
-      timestamp: new Date().toISOString(),
-      event: eventName,
-      eventId: payload.eventId ?? '',
-      classId: payload.classId ?? '',
-      competitionId: payload.competitionId ?? '',
-      published: payload.published ?? '',
-      payload: JSON.stringify(payload),
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    let worksheet = workbook.getWorksheet('Webhooks');
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet('Webhooks');
+      worksheet.addRow([
+        'timestamp',
+        'event',
+        'eventId',
+        'classId',
+        'competitionId',
+        'published',
+        'payload',
+      ]);
+      worksheet.getColumn(1).width = 24;
+      worksheet.getColumn(2).width = 28;
+      worksheet.getColumn(3).width = 14;
+      worksheet.getColumn(4).width = 14;
+      worksheet.getColumn(5).width = 16;
+      worksheet.getColumn(6).width = 12;
+      worksheet.getColumn(7).width = 80;
+    }
+    const headerInfo = getHeaderInfo(worksheet);
+    ensureHeaders(
+      worksheet,
+      headerInfo,
+      [
+        'timestamp',
+        'event',
+        'eventId',
+        'classId',
+        'competitionId',
+        'published',
+        'payload',
+      ],
+      16,
+    );
+    const row = worksheet.addRow([]);
+    const set = (header, value) => {
+      const col = headerInfo.map.get(header);
+      if (col) row.getCell(col).value = value;
     };
-
-    const table = await readCsvTable(filePath);
-    const headers = mergeHeaders(table.headers, baseHeaders, [row]);
-    table.rows.push(row);
-    await writeCsvTable(filePath, headers, table.rows);
+    set('timestamp', new Date().toISOString());
+    set('event', eventName);
+    set('eventId', payload.eventId ?? '');
+    set('classId', payload.classId ?? '');
+    set('competitionId', payload.competitionId ?? '');
+    set('published', payload.published ?? '');
+    set('payload', JSON.stringify(payload));
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
 
@@ -220,17 +367,22 @@ export async function updateStartingListSheet(
   removeSheets = [],
   outputPath = null,
 ) {
-  await enqueueWrite(async () => {
-    const targetPath = outputPath ?? EXCEL_OUTPUT_PATH;
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook(
+      outputPath ? { outputPath, includeWebhooks: false } : undefined,
+    );
+    if (sheetName !== 'raslistar') {
+      removeWorksheetIfExists(workbook, 'raslistar');
+    }
     if (Array.isArray(removeSheets)) {
       for (const name of removeSheets) {
         if (name && name !== sheetName) {
-          await removeCsvSheetIfExists(name, targetPath);
+          removeWorksheetIfExists(workbook, name);
         }
       }
     }
-
-    const filePath = getSheetPath(sheetName, targetPath);
+    let worksheet = workbook.getWorksheet(sheetName);
+    const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
     const needsSaeti =
       sheetName.toLowerCase() === 'forkeppni' ||
       sheetName.toLowerCase() === 'a-úrslit' ||
@@ -256,16 +408,52 @@ export async function updateStartingListSheet(
       'E5',
       'E6',
     ];
+    const headersForSheet = baseHeaders;
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.columns = headersForSheet.map((header) => {
+        const widthMap = {
+          'Nr.': 6,
+          Holl: 6,
+          Hönd: 6,
+          Knapi: 24,
+          LiturRas: 14,
+          'Félag knapa': 18,
+          Hestur: 28,
+          Litur: 20,
+          Aldur: 6,
+          'Félag eiganda': 18,
+          Eigandi: 22,
+          Faðir: 28,
+          Móðir: 28,
+          Lið: 10,
+          NafnBIG: 28,
+        };
+        return { header, key: header, width: widthMap[header] || 8 };
+      });
+    } else {
+      // Preserve existing columns; just ensure header row has required labels.
+      const headerRow = worksheet.getRow(1);
+      headersForSheet.forEach((header, index) => {
+        if (!headerRow.getCell(index + 1).value) {
+          headerRow.getCell(index + 1).value = header;
+        }
+      });
+    }
+    const headerInfo = getHeaderInfoFromRow(worksheet, 1);
+    const headers = headerInfo.map;
+    const nrCol = headers.get('Nr.');
 
-    const table = await readCsvTable(filePath);
-    const headers = mergeHeaders(table.headers, baseHeaders);
-    const indexByNr = new Map();
-    table.rows.forEach((row, index) => {
-      indexByNr.set(String(row['Nr.'] ?? ''), index);
-    });
-
+    const startRow = headerInfo.headerRow + 1;
+    let rowIndex = startRow;
     for (const item of startingList) {
       const trackNumber = item.vallarnumer ?? '';
+      const row = nrCol
+        ? getRowByValue(worksheet, nrCol, trackNumber, startRow) ||
+          worksheet.getRow(rowIndex)
+        : worksheet.getRow(rowIndex);
+      rowIndex += 1;
+
       const horseFullName = item.hross_fullt_nafn || item.hross_fulltnafn || '';
       const faedingarnumer = item.faedingarnumer ?? '';
       const aldur = calculateAldur(faedingarnumer);
@@ -273,7 +461,7 @@ export async function updateStartingListSheet(
         item.knapi_fullt_nafn ?? item.knapi_fulltnafn ?? item.knapi_nafn ?? '';
       const riderNameUpper = riderName ? riderName.toUpperCase() : '';
 
-      const rowData = {
+      const cells = {
         'Nr.': trackNumber,
         ...(needsSaeti ? { Sæti: '' } : {}),
         Holl: item.holl ?? '',
@@ -292,19 +480,19 @@ export async function updateStartingListSheet(
         NafnBIG: riderNameUpper,
       };
 
-      const key = String(trackNumber);
-      if (indexByNr.has(key)) {
-        Object.assign(table.rows[indexByNr.get(key)], rowData);
-      } else {
-        table.rows.push(rowData);
-        indexByNr.set(key, table.rows.length - 1);
+      for (const [header, value] of Object.entries(cells)) {
+        const col = headers.get(header);
+        if (col) {
+          row.getCell(col).value = value;
+        }
       }
     }
 
-    await writeCsvTable(filePath, headers, table.rows);
-    if (DEBUG_LOGS) {
-      console.log(`[csv] Updated ${sheetName} -> ${filePath}`);
-    }
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, {
+      log: false,
+      outputPath: outputPath ?? EXCEL_OUTPUT_PATH,
+    });
   });
 }
 
@@ -314,28 +502,32 @@ export async function updateResultsScores(
   removeSheets = [],
   outputPath = null,
 ) {
-  await enqueueWrite(async () => {
-    const targetPath = outputPath ?? EXCEL_OUTPUT_PATH;
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook(
+      outputPath ? { outputPath, includeWebhooks: false } : undefined,
+    );
+    if (sheetName !== 'raslistar') {
+      removeWorksheetIfExists(workbook, 'raslistar');
+    }
     if (Array.isArray(removeSheets)) {
       for (const name of removeSheets) {
         if (name && name !== sheetName) {
-          await removeCsvSheetIfExists(name, targetPath);
+          removeWorksheetIfExists(workbook, name);
         }
       }
     }
-
-    const filePath = getSheetPath(sheetName, targetPath);
-    const table = await readCsvTable(filePath);
-    if (table.rows.length === 0 && table.headers.length === 0) {
+    const worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) {
       return;
     }
-
+    const headerInfo = getHeaderInfoFromRow(worksheet, 1);
+    const headers = headerInfo.map;
     const isForkeppni = sheetName.toLowerCase() === 'forkeppni';
     const needsSaeti =
       sheetName.toLowerCase() === 'forkeppni' ||
       sheetName.toLowerCase() === 'a-úrslit' ||
       sheetName.toLowerCase() === 'b-úrslit';
-    let headers = mergeHeaders(table.headers, [
+    ensureHeaders(worksheet, getHeaderInfo(worksheet), [
       ...(needsSaeti ? ['Sæti'] : []),
       'E1',
       'E2',
@@ -344,34 +536,52 @@ export async function updateResultsScores(
       'E5',
       'E6',
     ]);
-    const indexByNr = new Map();
-    table.rows.forEach((row, index) => {
-      indexByNr.set(String(row['Nr.'] ?? ''), index);
-    });
+    const nrCol = headers.get('Nr.');
+    const saetiCol = needsSaeti ? headers.get('Sæti') : null;
+    const e1Col = headers.get('E1');
+    const e2Col = headers.get('E2');
+    const e3Col = headers.get('E3');
+    const e4Col = headers.get('E4');
+    const e5Col = headers.get('E5');
+    const e6Col = headers.get('E6');
+    const breakdownCols = isForkeppni ? null : new Map();
+    if (!nrCol || !e1Col || !e2Col || !e3Col || !e4Col || !e5Col || !e6Col) {
+      return;
+    }
 
     for (const result of results) {
-      const key = String(result.vallarnumer ?? '');
-      const rowIndex = indexByNr.get(key);
-      if (rowIndex == null) continue;
-      const row = table.rows[rowIndex];
+      const trackNumber = result.vallarnumer ?? '';
+      const row = getRowByValue(worksheet, nrCol, trackNumber, 2);
+      if (!row) continue;
 
-      if (needsSaeti) {
-        row['Sæti'] = result.saeti ?? result.fmt_saeti ?? '';
+      if (saetiCol) {
+        row.getCell(saetiCol).value = result.saeti ?? result.fmt_saeti ?? '';
       }
       const judges = Array.isArray(result.einkunnir_domara)
         ? result.einkunnir_domara
         : [];
+      if (DEBUG_LOGS) {
+        console.log('[einkunnir_domara]', trackNumber, judges);
+      }
       const scores = judges
         .slice(0, 5)
         .map((j) => parseJudgeScore(j?.domari_adaleinkunn));
-      row.E1 = roundScore(scores[0] ?? null);
-      row.E2 = roundScore(scores[1] ?? null);
-      row.E3 = roundScore(scores[2] ?? null);
-      row.E4 = roundScore(scores[3] ?? null);
-      row.E5 = roundScore(scores[4] ?? null);
-      row.E6 = roundScore(parseJudgeScore(result.keppandi_medaleinkunn));
+      row.getCell(e1Col).value = roundScore(scores[0] ?? null);
+      row.getCell(e2Col).value = roundScore(scores[1] ?? null);
+      row.getCell(e3Col).value = roundScore(scores[2] ?? null);
+      row.getCell(e4Col).value = roundScore(scores[3] ?? null);
+      row.getCell(e5Col).value = roundScore(scores[4] ?? null);
+      row.getCell(e6Col).value = roundScore(
+        parseJudgeScore(result.keppandi_medaleinkunn),
+      );
 
-      if (!isForkeppni && judges.length) {
+      const keppniName = (result.keppni_nafn ?? result.aframrodun ?? '')
+        .toString()
+        .toLowerCase()
+        .replace(/-/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!isForkeppni && judges.length && breakdownCols) {
         for (let j = 0; j < Math.min(judges.length, 5); j += 1) {
           const details = Array.isArray(judges[j]?.sundurlidun_einkunna)
             ? judges[j].sundurlidun_einkunna
@@ -379,30 +589,57 @@ export async function updateResultsScores(
           for (const detail of details) {
             const abbr = getGangtegundAbbr(detail?.gangtegund);
             if (!abbr) continue;
-            const header = `E${j + 1}_${abbr}`;
-            headers = mergeHeaders(headers, [header]);
-            row[header] = roundScore(parseJudgeScore(detail?.einkunn));
+            if (!breakdownCols.has(abbr)) {
+              const headersToAdd = [];
+              for (let i = 1; i <= 5; i += 1) {
+                headersToAdd.push(`E${i}_${abbr}`);
+              }
+              ensureHeaders(worksheet, headerInfo, headersToAdd);
+              breakdownCols.set(
+                abbr,
+                headersToAdd.map((h) => headers.get(h)),
+              );
+            }
+            const cols = breakdownCols.get(abbr);
+            const col = cols?.[j];
+            if (!col) continue;
+            row.getCell(col).value = roundScore(
+              parseJudgeScore(detail?.einkunn),
+            );
           }
         }
       }
     }
 
-    await writeCsvTable(filePath, headers, table.rows);
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, {
+      log: false,
+      outputPath: outputPath ?? EXCEL_OUTPUT_PATH,
+    });
   });
 }
 
 export async function writeDataSheet(sheetName, headers, rows) {
-  await enqueueWrite(async () => {
-    const filePath = getSheetPath(sheetName);
-    const table = await readCsvTable(filePath);
-    const mergedHeaders = mergeHeaders(table.headers, headers, rows);
-    table.rows.push(...rows);
-    await writeCsvTable(filePath, mergedHeaders, table.rows);
-  });
-}
+  await enqueueExcelWrite(async () => {
+    const workbook = await ensureWorkbook();
+    let worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) {
+      worksheet = workbook.addWorksheet(sheetName);
+      worksheet.addRow(headers);
+    }
 
-export async function removeSheet(sheetName) {
-  await enqueueWrite(async () => {
-    await removeCsvSheetIfExists(sheetName);
+    const headerMap = getHeaderInfo(worksheet).map;
+    for (const rowData of rows) {
+      const row = worksheet.addRow([]);
+      for (const [header, value] of Object.entries(rowData)) {
+        const col = headerMap.get(header);
+        if (col) {
+          row.getCell(col).value = value;
+        }
+      }
+    }
+
+    reorderWorkbookSheets(workbook);
+    await writeWorkbookAtomic(workbook, { log: false });
   });
 }
