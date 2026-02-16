@@ -5,3 +5,10 @@ data/
 pkg
 pkg@5.8.1
 sportfengur-webhooks@1.0.0
+
+# Test files
+*.test.js
+**/*.test.js
+
+# Kiro specific files
+.kiro/

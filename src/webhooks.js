@@ -15,6 +15,8 @@ import {
   writeDataSheet,
   removeSheet,
 } from './excel.js';
+import { scheduleRefresh, setCompetitionContext } from './vmix/refresh.js';
+import { log } from './logger.js';
 
 const EVENT_DEFINITIONS = {
   event_einkunn_saeti: ['eventId', 'classId', 'competitionId'],
@@ -41,18 +43,6 @@ const COMPETITION_NAME_BY_ID = {
   12: 'C úrslit',
 };
 
-function logWebhook(message, ...args) {
-  const ts = new Date().toTimeString().split(' ')[0];
-  console.log(`[${ts}] ${message}`, ...args);
-}
-
-function formatWebhookInfo(eventName, payload) {
-  return `tegund=${eventName} eventId=${payload.eventId ?? ''} classId=${
-    payload.classId ?? ''
-  } competitionId=${payload.competitionId ?? ''} published=${
-    payload.published ?? ''
-  }`;
-}
 function getCompetitionName(competitionId) {
   const id = Number(competitionId);
   if (!Number.isFinite(id)) return null;
@@ -98,9 +88,6 @@ let lastError = null;
 let currentPayload = null;
 
 function requireWebhookSecret(req, res) {
-  if (!WEBHOOK_SECRET_REQUIRED) {
-    return true;
-  }
   const secretHeader = req.header('x-webhook-secret') || '';
   if (!WEBHOOK_SECRET || secretHeader !== WEBHOOK_SECRET) {
     res.status(401).send('Unauthorized');
@@ -189,9 +176,6 @@ async function handleEventRaslisti(payload) {
   if (competitionId == null) {
     throw new Error('Missing competitionId for startinglist.');
   }
-  const colorYellow = '\x1b[33m';
-  const colorGreen = '\x1b[32m';
-  const colorReset = '\x1b[0m';
   const competitionName = getCompetitionName(competitionId);
   const sheetName = getCompetitionSheetName(competitionId);
   const legacySheetName = getCompetitionName(competitionId)
@@ -199,27 +183,27 @@ async function handleEventRaslisti(payload) {
     : null;
   const outputPath = null;
   const start = Date.now();
-  logWebhook(
-    `[ráslisti] Sæki keppni ${
-      competitionName ? `${competitionName} ` : ''
-    }(flokkur ${classId}, keppni ${competitionId})`,
+
+  log.excel.fetching(
+    competitionName || `Competition ${competitionId}`,
+    classId,
+    competitionId,
   );
+
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
   );
   const startingList = Array.isArray(data?.raslisti) ? data.raslisti : [];
-  logWebhook(`[ráslisti] Fjöldi í ráslista: ${startingList.length}`);
-  logWebhook(
-    `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
-  );
+
+  log.excel.writing();
   await updateStartingListSheet(
     startingList,
     sheetName,
     legacySheetName ? [legacySheetName] : [],
     outputPath,
   );
-  logWebhook(`${colorGreen}Búið að skrifa${colorReset}`);
-  logWebhook(`[ráslisti] Skrifun lokið á ${Date.now() - start}ms`);
+  log.excel.written();
+  log.excel.completed(startingList.length, Date.now() - start);
 }
 
 async function handleEventKeppendalistiBreyta(payload) {
@@ -304,9 +288,6 @@ async function handleEventEinkunnSaeti(payload) {
   if (competitionId == null) {
     throw new Error('Missing competitionId for results.');
   }
-  const colorYellow = '\x1b[33m';
-  const colorGreen = '\x1b[32m';
-  const colorReset = '\x1b[0m';
   const competitionName = getCompetitionName(competitionId);
   const sheetName = getCompetitionSheetName(competitionId);
   const legacySheetName = getCompetitionName(competitionId)
@@ -314,28 +295,26 @@ async function handleEventEinkunnSaeti(payload) {
     : null;
   const outputPath = null;
   const start = Date.now();
-  logWebhook(
-    `[einkunnir] Sæki keppni ${
-      competitionName ? `${competitionName} ` : ''
-    }(flokkur ${classId}, keppni ${competitionId})`,
+
+  log.excel.fetching(
+    competitionName || `Competition ${competitionId}`,
+    classId,
+    competitionId,
   );
+
   const data = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
   );
-  if (DEBUG_LOGS) {
-    logWebhook('[einkunnir] response', data);
-  }
-  logWebhook(
-    `${colorYellow}Það er verið að skrifa í excel file'inn. Haldið í hestana!${colorReset}`,
-  );
+
+  log.excel.writing();
   await updateResultsScores(
     data?.einkunnir || [],
     sheetName,
     legacySheetName ? [legacySheetName] : [],
     outputPath,
   );
-  logWebhook(`${colorGreen}Búið að skrifa${colorReset}`);
-  logWebhook(`[einkunnir] Skrifun lokið á ${Date.now() - start}ms`);
+  log.excel.written();
+  log.excel.completed((data?.einkunnir || []).length, Date.now() - start);
 }
 
 async function handleWebhook(req, res, eventName) {
@@ -350,56 +329,87 @@ async function handleWebhook(req, res, eventName) {
     return;
   }
 
-  const colorCyan = '\x1b[36m';
-  const colorReset = '\x1b[0m';
-  logWebhook(
-    `${colorCyan}[vefkrókur] móttekið${colorReset} ${formatWebhookInfo(
-      eventName,
-      payload,
-    )}`,
-  );
+  log.webhook.received(eventName, payload);
   res.send('Skeyti móttekið');
 
   lastWebhookAt = new Date().toISOString();
   const key = dedupeKey(eventName, payload);
   pruneDedupeCache();
   if (dedupeCache.has(key)) {
-    logWebhook(`[vefkrókur] tvíritun hunsuð ${key}`);
+    log.webhook.duplicate(key);
     return;
   }
   dedupeCache.set(key, Date.now());
 
   try {
     const start = Date.now();
-    logWebhook(`[vefkrókur] vinnsla hafin: ${eventName}`);
+    log.webhook.processing(eventName);
 
     if (!isAllowedEventId(payload)) {
-      logWebhook(
-        `[vefkrókur] sleppi: eventId=${payload.eventId ?? ''} ekki EVENT_ID=${EVENT_ID_FILTER}`,
-      );
+      log.webhook.filtered(payload.eventId ?? 'N/A', EVENT_ID_FILTER);
       return;
     }
 
     await appendWebhookRow(eventName, payload);
+
+    // Resolve competitionId if needed
+    let resolvedCompetitionId = payload.competitionId;
 
     if (
       eventName === 'event_raslisti_birtur' ||
       eventName === 'event_naesti_sprettur'
     ) {
       await handleEventRaslisti(payload);
+      // Resolve competitionId for vMix refresh
+      if (!resolvedCompetitionId && payload.classId) {
+        resolvedCompetitionId = await resolveCompetitionId(payload);
+      }
     } else if (eventName === 'event_keppendalisti_breyta') {
       await handleEventKeppendalistiBreyta(payload);
     } else if (eventName === 'event_keppnisgreinar') {
       await handleEventKeppnisgreinar(payload);
     } else if (eventName === 'event_einkunn_saeti') {
       await handleEventEinkunnSaeti(payload);
+      // Resolve competitionId for vMix refresh
+      if (!resolvedCompetitionId && payload.classId) {
+        resolvedCompetitionId = await resolveCompetitionId(payload);
+      }
+    }
+
+    // Trigger vMix refresh asynchronously (non-blocking)
+    // Set competition context if available
+    if (payload.eventId && payload.classId && resolvedCompetitionId) {
+      // Force refresh for starting list webhooks, use cache for results webhooks
+      const forceRefresh =
+        eventName === 'event_raslisti_birtur' ||
+        eventName === 'event_naesti_sprettur';
+
+      setCompetitionContext(
+        payload.eventId,
+        payload.classId,
+        resolvedCompetitionId,
+        forceRefresh,
+      );
+      try {
+        scheduleRefresh();
+        log.vmix.scheduled(
+          payload.eventId,
+          payload.classId,
+          resolvedCompetitionId,
+          forceRefresh,
+        );
+      } catch (error) {
+        log.error('vMix refresh scheduling', error);
+      }
+    } else {
+      log.vmix.noContext();
     }
 
     lastWebhookProcessedAt = new Date().toISOString();
-    logWebhook(`[vefkrókur] lokið: ${eventName} á ${Date.now() - start}ms`);
+    log.webhook.completed(eventName, Date.now() - start);
   } catch (error) {
     lastError = `${new Date().toISOString()} ${eventName} ${error.message}`;
-    logWebhook(`Vefkrókur ${eventName} mistókst:`, error);
+    log.error(`webhook ${eventName}`, error);
   }
 }
 
@@ -434,7 +444,7 @@ export function registerHealthRoute(app) {
 
 export function registerTestRoute(app) {
   app.post('/webhooks/test', (req, res) => {
-    logWebhook('[vefkrókur] prófun', req.body);
+    log.webhook.received('test', req.body);
     res.send('Skeyti móttekið');
   });
 }
