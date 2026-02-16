@@ -17,8 +17,8 @@ import { SPORTFENGUR_LOCALE } from '../config.js';
  * @param {Express} app - Express application instance
  */
 export function registerVmixRoutes(app) {
-  // GET /data/current.json - Returns all players as JSON array
-  app.get('/data/current.json', (req, res) => {
+  // GET /data/current - Returns all players as JSON array
+  app.get('/data/current', (req, res) => {
     const currentState = getCurrentState();
 
     res.setHeader('Cache-Control', 'no-store');
