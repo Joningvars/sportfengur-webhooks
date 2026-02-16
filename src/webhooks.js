@@ -5,6 +5,7 @@ import {
   DEDUPE_TTL_MS,
   DEBUG_LOGS,
   EVENT_ID_FILTER,
+  VMIX_EVENT_ID,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
 // writing to a single output file; keep sheet names for competitions
@@ -15,6 +16,7 @@ import {
   writeDataSheet,
   removeSheet,
 } from './excel.js';
+import { scheduleRefresh, setCompetitionContext } from './vmix/refresh.js';
 
 const EVENT_DEFINITIONS = {
   event_einkunn_saeti: ['eventId', 'classId', 'competitionId'],
@@ -382,17 +384,63 @@ async function handleWebhook(req, res, eventName) {
 
     await appendWebhookRow(eventName, payload);
 
+    // Resolve competitionId if needed
+    let resolvedCompetitionId = payload.competitionId;
+
     if (
       eventName === 'event_raslisti_birtur' ||
       eventName === 'event_naesti_sprettur'
     ) {
       await handleEventRaslisti(payload);
+      // Resolve competitionId for vMix refresh
+      if (!resolvedCompetitionId && payload.classId) {
+        resolvedCompetitionId = await resolveCompetitionId(payload);
+      }
     } else if (eventName === 'event_keppendalisti_breyta') {
       await handleEventKeppendalistiBreyta(payload);
     } else if (eventName === 'event_keppnisgreinar') {
       await handleEventKeppnisgreinar(payload);
     } else if (eventName === 'event_einkunn_saeti') {
       await handleEventEinkunnSaeti(payload);
+      // Resolve competitionId for vMix refresh
+      if (!resolvedCompetitionId && payload.classId) {
+        resolvedCompetitionId = await resolveCompetitionId(payload);
+      }
+    }
+
+    // Trigger vMix refresh asynchronously (non-blocking)
+    // Set competition context if available
+    if (payload.eventId && payload.classId && resolvedCompetitionId) {
+      // Check if this event matches the VMIX_EVENT_ID filter
+      if (VMIX_EVENT_ID != null && Number(payload.eventId) !== VMIX_EVENT_ID) {
+        logWebhook(
+          `[vMix] Skipping refresh - eventId ${payload.eventId} does not match VMIX_EVENT_ID=${VMIX_EVENT_ID}`,
+        );
+      } else {
+        // Force refresh for starting list webhooks, use cache for results webhooks
+        const forceRefresh =
+          eventName === 'event_raslisti_birtur' ||
+          eventName === 'event_naesti_sprettur';
+
+        setCompetitionContext(
+          payload.eventId,
+          payload.classId,
+          resolvedCompetitionId,
+          forceRefresh,
+        );
+        try {
+          scheduleRefresh();
+          logWebhook(
+            `[vMix] Refresh scheduled for event=${payload.eventId} class=${payload.classId} competition=${resolvedCompetitionId}${forceRefresh ? ' (force refresh)' : ''}`,
+          );
+        } catch (error) {
+          logWebhook('[vMix] Refresh scheduling failed:', error);
+        }
+      }
+    } else {
+      logWebhook(
+        `[vMix] Skipping refresh - missing context: eventId=${payload.eventId} classId=${payload.classId} competitionId=${resolvedCompetitionId}`,
+      );
     }
 
     lastWebhookProcessedAt = new Date().toISOString();
