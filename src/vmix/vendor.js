@@ -5,6 +5,7 @@
 
 import { apiGetWithRetry } from '../sportfengur.js';
 import { SPORTFENGUR_LOCALE } from '../config.js';
+import { log } from '../logger.js';
 
 // Cache for starting list data
 // Key: `${classId}-${competitionId}`
@@ -53,25 +54,17 @@ async function fetchStartingList(classId, competitionId, forceRefresh = false) {
   // Check cache if not forcing refresh
   if (!forceRefresh && startingListCache.has(cacheKey)) {
     const cached = startingListCache.get(cacheKey);
-    console.log(
-      `[vMix Vendor] Using cached starting list: ${cached.data.length} riders (cached at ${new Date(cached.timestamp).toISOString()})`,
-    );
+    log.vmix.cached(cached.data.length);
     return cached.data;
   }
 
   // Fetch fresh data
-  console.log(
-    `[vMix Vendor] Fetching starting list: /${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
-  );
-
   const startingListData = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
   );
   const startingList = Array.isArray(startingListData?.raslisti)
     ? startingListData.raslisti
     : [];
-
-  console.log(`[vMix Vendor] Starting list: ${startingList.length} riders`);
 
   // Update cache
   startingListCache.set(cacheKey, {
@@ -89,24 +82,12 @@ async function fetchStartingList(classId, competitionId, forceRefresh = false) {
  * @returns {Promise<array>} Results array
  */
 async function fetchResults(classId, competitionId) {
-  console.log(
-    `[vMix Vendor] Fetching results: /${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
-  );
-
   const resultsData = await apiGetWithRetry(
     `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
   );
   const scores = Array.isArray(resultsData?.einkunnir)
     ? resultsData.einkunnir
     : [];
-
-  console.log(`[vMix Vendor] Results: ${scores.length} scores`);
-
-  // Log detailed structure of first score entry to see gait types
-  if (scores.length > 0 && scores[0].einkunnir_domara) {
-    console.log('[vMix Vendor] Sample score structure:');
-    console.log(JSON.stringify(scores[0], null, 2));
-  }
 
   return scores;
 }
@@ -120,7 +101,7 @@ export function invalidateStartingListCache(classId, competitionId) {
   const cacheKey = `${classId}-${competitionId}`;
   if (startingListCache.has(cacheKey)) {
     startingListCache.delete(cacheKey);
-    console.log(`[vMix Vendor] Cache invalidated for ${cacheKey}`);
+    log.vmix.cacheInvalidated(cacheKey);
   }
 }
 
@@ -151,9 +132,7 @@ export async function fetchLeaderboard(
     // Fetch results (always fresh)
     const scores = await fetchResults(classId, competitionId);
 
-    console.log(
-      `[vMix Vendor] Fetched ${startingList.length} riders, ${scores.length} scores`,
-    );
+    log.vmix.fetched(startingList.length, scores.length);
 
     // Merge starting list with scores by keppandi_numer
     const scoresByKeppandi = new Map();
@@ -174,10 +153,9 @@ export async function fetchLeaderboard(
       };
     });
 
-    console.log(`[vMix Vendor] Combined: ${combined.length} entries`);
     return combined;
   } catch (error) {
-    console.error('[vMix Vendor] Error fetching leaderboard:', error);
+    log.error('vMix vendor fetchLeaderboard', error);
     throw error;
   }
 }

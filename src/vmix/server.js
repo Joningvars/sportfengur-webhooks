@@ -15,6 +15,7 @@ import {
 import { leaderboardToCsv } from './normalizer.js';
 import { apiGetWithRetry } from '../sportfengur.js';
 import { SPORTFENGUR_LOCALE } from '../config.js';
+import { log } from '../logger.js';
 
 /**
  * Extract gangtegund results from current state
@@ -93,11 +94,7 @@ export function registerVmixRoutes(app) {
   app.get('/current', (req, res) => {
     const currentState = getCurrentState();
 
-    console.log(
-      '[vMix Server] /current called, returning',
-      currentState.length,
-      'entries',
-    );
+    log.server.endpoint('/current', currentState.length);
 
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/json');

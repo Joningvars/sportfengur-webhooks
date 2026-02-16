@@ -9,6 +9,7 @@
 import { fetchCurrentRider, fetchLeaderboard } from './vendor.js';
 import { normalizeCurrent, normalizeLeaderboard } from './normalizer.js';
 import { updateState } from './state.js';
+import { log } from '../logger.js';
 
 // Configuration
 const DEBOUNCE_MS = Number(process.env.VMIX_DEBOUNCE_MS || 200);
@@ -97,7 +98,7 @@ async function executeRefresh() {
   // Check refresh lock
   if (refreshInProgress) {
     // Another refresh is in progress, skip this one (deduplication)
-    console.log('[vMix Refresh] Skipping - refresh already in progress');
+    log.vmix.skipped();
     return;
   }
 
@@ -110,15 +111,11 @@ async function executeRefresh() {
 
     // Validate competition context
     if (!classId || !competitionId) {
-      console.warn(
-        '[vMix Refresh] Competition context not set, skipping refresh',
-      );
+      log.vmix.noContext();
       return;
     }
 
-    console.log(
-      `[vMix Refresh] Starting refresh for event=${eventId} class=${classId} competition=${competitionId}`,
-    );
+    log.vmix.starting(eventId, classId, competitionId);
 
     // Set timeout for refresh operation
     const timeoutPromise = new Promise((_, reject) => {
@@ -131,19 +128,10 @@ async function executeRefresh() {
     // Execute refresh with timeout
     await Promise.race([refreshWithTimeout(), timeoutPromise]);
 
-    console.log('[vMix Refresh] Refresh completed successfully');
+    log.vmix.updated();
   } catch (error) {
     // Log error and preserve existing state
-    const timestamp = new Date().toISOString();
-    console.error('[vMix Refresh] Refresh failed:', {
-      timestamp,
-      operation: 'refresh',
-      error: error.message,
-      details: {
-        context: competitionContext,
-        stack: error.stack,
-      },
-    });
+    log.error('vMix refresh', error);
   } finally {
     // Release refresh lock
     refreshInProgress = false;
@@ -166,9 +154,7 @@ async function executeRefresh() {
 async function refreshWithTimeout() {
   const { eventId, classId, competitionId, forceRefresh } = competitionContext;
 
-  console.log(
-    `[vMix Refresh] Fetching leaderboard from API: class=${classId} competition=${competitionId}${forceRefresh ? ' (force refresh)' : ''}`,
-  );
+  log.vmix.fetching(classId, competitionId, forceRefresh);
 
   // Fetch leaderboard data from vendor API
   const leaderboardData = await fetchLeaderboard(
@@ -178,19 +164,11 @@ async function refreshWithTimeout() {
     forceRefresh,
   );
 
-  console.log(
-    `[vMix Refresh] Received ${Array.isArray(leaderboardData) ? leaderboardData.length : 0} entries from API`,
-  );
-
   // Normalize data
   const normalizedLeaderboard = normalizeLeaderboard(leaderboardData);
 
-  console.log(
-    `[vMix Refresh] Normalized to ${normalizedLeaderboard.length} entries`,
-  );
+  log.vmix.normalized(normalizedLeaderboard.length);
 
   // Update state atomically with metadata
   updateState(normalizedLeaderboard, eventId, classId, competitionId);
-
-  console.log('[vMix Refresh] State updated');
 }
