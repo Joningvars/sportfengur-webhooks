@@ -1,17 +1,67 @@
 export const openApiSpec = {
   openapi: '3.0.3',
   info: {
-    title: 'SportFengur Webhooks',
+    title: 'Eiðfaxi Live Competition API',
     version: '1.0.0',
-    description: 'Webhook endpoints for SportFengur updates.',
+    description: `Real-time competition data API for Icelandic horse shows. Provides live scores, leaderboards, and event information for vMix graphics integration.
+
+## Features
+- **Real-time Updates**: Webhook-driven data refresh for instant score updates
+- **Event Filtering**: Get data for specific events and competitions
+- **Gait-Specific Results**: Detailed scores for each gait type (tölt, trot, pace, etc.)
+- **vMix Integration**: JSON format optimized for live graphics
+- **Caching**: Smart caching for starting lists with automatic invalidation
+
+## Data Flow
+1. Competition management system sends webhooks when scores/starting lists change
+2. Eiðfaxi fetches and caches data from competition API
+3. vMix polls endpoints for real-time graphics updates
+
+## Authentication
+Webhook endpoints require \`x-webhook-secret\` header for security.`,
+    contact: {
+      name: 'Eiðfaxi Support',
+    },
+    license: {
+      name: 'MIT',
+    },
   },
-  servers: [{ url: 'https://eidfaxi.ngrok.app' }],
+  servers: [
+    {
+      url: 'https://eidfaxi.ngrok.app',
+      description: 'Production server',
+    },
+    {
+      url: 'http://localhost:3000',
+      description: 'Development server',
+    },
+  ],
+  tags: [
+    {
+      name: 'Competition Data',
+      description: 'Real-time competition scores and leaderboards',
+    },
+    {
+      name: 'Event Information',
+      description: 'Event metadata, participants, and competition schedules',
+    },
+    {
+      name: 'Webhooks',
+      description: 'Webhook endpoints for receiving updates from Sportfengur',
+    },
+    {
+      name: 'System',
+      description: 'Health checks and system status',
+    },
+  ],
   paths: {
     '/event_einkunn_saeti': {
       post: {
-        summary: 'Einkunn saeti webhook',
+        tags: ['Webhooks'],
+        summary: 'Score Update Webhook',
         description:
-          'Triggers results fetch. E1-E5 are judge totals, E6 is keppandi_medaleinkunn.',
+          'Receives notifications when rider scores are updated. Triggers automatic fetch of latest results. E1-E5 represent individual judge scores, E6 is the average score.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -38,7 +88,11 @@ export const openApiSpec = {
     },
     '/event_mot_skra': {
       post: {
-        summary: 'Mot skra webhook',
+        tags: ['Webhooks'],
+        summary: 'Event Registration Webhook',
+        description:
+          'Receives notifications when event registration data changes.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -61,7 +115,11 @@ export const openApiSpec = {
     },
     '/event_keppendalisti_breyta': {
       post: {
-        summary: 'Keppendalisti breyta webhook',
+        tags: ['Webhooks'],
+        summary: 'Participant List Update Webhook',
+        description:
+          'Receives notifications when the participant list (riders and horses) is modified.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -84,7 +142,11 @@ export const openApiSpec = {
     },
     '/event_motadagskra_breytist': {
       post: {
-        summary: 'Motadagskra breytist webhook',
+        tags: ['Webhooks'],
+        summary: 'Event Schedule Update Webhook',
+        description:
+          'Receives notifications when the event schedule or program changes.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -107,9 +169,11 @@ export const openApiSpec = {
     },
     '/event_raslisti_birtur': {
       post: {
-        summary: 'Raslisti birtur webhook',
+        tags: ['Webhooks'],
+        summary: 'Starting List Published Webhook',
         description:
-          'Triggers starting list fetch (cached per class/competition).',
+          'Receives notifications when a starting list is published. Triggers fetch and cache of starting list data. Cache is invalidated on subsequent updates.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -142,9 +206,11 @@ export const openApiSpec = {
     },
     '/event_naesti_sprettur': {
       post: {
-        summary: 'Naesti sprettur webhook',
+        tags: ['Webhooks'],
+        summary: 'Next Heat Webhook',
         description:
-          'Triggers starting list fetch (cached per class/competition).',
+          'Receives notifications when the next heat/round is ready. Triggers starting list fetch with cache refresh.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -171,7 +237,11 @@ export const openApiSpec = {
     },
     '/event_keppnisgreinar': {
       post: {
-        summary: 'Keppnisgreinar webhook',
+        tags: ['Webhooks'],
+        summary: 'Competition Disciplines Webhook',
+        description:
+          'Receives notifications when competition disciplines or classes are updated.',
+        security: [{ webhookSecret: [] }],
         requestBody: {
           required: true,
           content: {
@@ -194,174 +264,31 @@ export const openApiSpec = {
     },
     '/health': {
       get: {
-        summary: 'Health status',
-        responses: { 200: { description: 'OK' } },
-      },
-    },
-    '/current': {
-      get: {
-        summary: 'Get current JSON payload (wMix)',
-        responses: { 200: { description: 'OK' } },
-      },
-      post: {
-        summary: 'Set current JSON payload (wMix)',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: { type: 'object' },
-            },
-          },
-        },
-        responses: { 200: { description: 'Skeyti motttekid' } },
-      },
-    },
-    '/data/current.json': {
-      get: {
-        summary: 'Get all players data for vMix',
+        tags: ['System'],
+        summary: 'Health Check',
         description:
-          'Returns all players with complete competition data in JSON array format. Designed for vMix polling-based data sources.',
+          'Returns server health status and last webhook activity timestamps.',
         responses: {
           200: {
-            description: 'Current rider data',
-            headers: {
-              'Cache-Control': {
-                schema: { type: 'string', example: 'no-store' },
-                description: 'Prevents caching to ensure fresh data',
-              },
-              'Content-Type': {
-                schema: { type: 'string', example: 'application/json' },
-              },
-            },
+            description: 'Server is healthy',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
-                    Nr: {
-                      type: 'string',
-                      description: 'Track number',
-                      example: '12',
-                    },
-                    Saeti: {
-                      type: 'string',
-                      description: 'Current rank/position',
-                      example: '3',
-                    },
-                    Holl: {
-                      type: 'string',
-                      description: 'Holl number',
-                      example: '1',
-                    },
-                    Hond: {
-                      type: 'string',
-                      description: 'Hand (V/H)',
-                      example: 'V',
-                    },
-                    Knapi: {
-                      type: 'string',
-                      description: 'Rider full name',
-                      example: 'Jón Jónsson',
-                    },
-                    LiturRas: {
-                      type: 'string',
-                      description: 'Track color number and name',
-                      example: '3 - Grænn',
-                    },
-                    FelagKnapa: {
-                      type: 'string',
-                      description: 'Rider club/association',
-                      example: 'Fákur',
-                    },
-                    Hestur: {
-                      type: 'string',
-                      description: 'Horse full name',
-                      example: 'Fákur frá Stóra-Ármóti',
-                    },
-                    Litur: {
-                      type: 'string',
-                      description: 'Horse color',
-                      example: 'Brúnn/milli-einlitt',
-                    },
-                    Aldur: {
-                      type: 'string',
-                      description: 'Horse age',
-                      example: '9',
-                    },
-                    FelagEiganda: {
-                      type: 'string',
-                      description: 'Owner club/association',
-                      example: 'Fákur',
-                    },
-                    Lid: {
-                      type: 'string',
-                      description: 'Team',
-                      example: '',
-                    },
-                    NafnBIG: {
-                      type: 'string',
-                      description: 'Rider name in uppercase',
-                      example: 'JÓN JÓNSSON',
-                    },
-                    E1: {
-                      type: 'string',
-                      description: 'Judge 1 score',
-                      example: '6.85',
-                    },
-                    E2: {
-                      type: 'string',
-                      description: 'Judge 2 score',
-                      example: '6.90',
-                    },
-                    E3: {
-                      type: 'string',
-                      description: 'Judge 3 score',
-                      example: '6.80',
-                    },
-                    E4: {
-                      type: 'string',
-                      description: 'Judge 4 score',
-                      example: '6.88',
-                    },
-                    E5: {
-                      type: 'string',
-                      description: 'Judge 5 score',
-                      example: '6.82',
-                    },
-                    E6: {
-                      type: 'string',
-                      description: 'Final average score',
-                      example: '6.85',
-                    },
-                    timestamp: {
+                    status: { type: 'string', example: 'ok' },
+                    lastWebhookAt: {
                       type: 'string',
                       format: 'date-time',
-                      description: 'ISO 8601 timestamp of last update',
-                      example: '2024-01-15T14:30:00Z',
+                      nullable: true,
                     },
+                    lastWebhookProcessedAt: {
+                      type: 'string',
+                      format: 'date-time',
+                      nullable: true,
+                    },
+                    lastError: { type: 'string', nullable: true },
                   },
-                },
-                example: {
-                  Nr: '12',
-                  Saeti: '3',
-                  Holl: '1',
-                  Hond: 'V',
-                  Knapi: 'Jón Jónsson',
-                  LiturRas: '3 - Grænn',
-                  FelagKnapa: 'Fákur',
-                  Hestur: 'Fákur frá Stóra-Ármóti',
-                  Litur: 'Brúnn/milli-einlitt',
-                  Aldur: '9',
-                  FelagEiganda: 'Fákur',
-                  Lid: '',
-                  NafnBIG: 'JÓN JÓNSSON',
-                  E1: '6.85',
-                  E2: '6.90',
-                  E3: '6.80',
-                  E4: '6.88',
-                  E5: '6.82',
-                  E6: '6.85',
-                  timestamp: '2024-01-15T14:30:00Z',
                 },
               },
             },
@@ -369,35 +296,286 @@ export const openApiSpec = {
         },
       },
     },
-    '/data/leaderboard.csv': {
+    '/current': {
       get: {
-        summary: 'Get leaderboard data for vMix',
+        tags: ['Competition Data'],
+        summary: 'Get Current Competition Data',
         description:
-          'Returns complete leaderboard in CSV format with all competition fields. Designed for vMix polling-based data sources.',
+          'Returns complete leaderboard for the currently active competition. Includes all riders with main scores (E1-E6) and gait-specific scores (tölt, trot, pace, etc.). Data is updated in real-time via webhooks. Use this endpoint when you want all data regardless of event.',
         responses: {
           200: {
-            description: 'Leaderboard data in CSV format',
-            headers: {
-              'Cache-Control': {
-                schema: { type: 'string', example: 'no-store' },
-                description: 'Prevents caching to ensure fresh data',
-              },
-              'Content-Type': {
-                schema: { type: 'string', example: 'text/csv' },
-              },
-            },
+            description: 'Current competition data',
             content: {
-              'text/csv': {
+              'application/json': {
                 schema: {
-                  type: 'string',
-                  description:
-                    'CSV with headers: Nr,Saeti,Holl,Hond,Knapi,LiturRas,FelagKnapa,Hestur,Litur,Aldur,FelagEiganda,Lid,NafnBIG,E1,E2,E3,E4,E5,E6',
-                  example:
-                    'Nr,Saeti,Holl,Hond,Knapi,LiturRas,FelagKnapa,Hestur,Litur,Aldur,FelagEiganda,Lid,NafnBIG,E1,E2,E3,E4,E5,E6\n12,3,1,V,Jón Jónsson,3 - Grænn,Fákur,Fákur frá Stóra-Ármóti,Brúnn/milli-einlitt,9,Fákur,,JÓN JÓNSSON,6.85,6.90,6.80,6.88,6.82,6.85',
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      Nr: { type: 'string', example: '3' },
+                      Saeti: { type: 'string', example: '1' },
+                      Knapi: { type: 'string', example: 'Jón Ársæll Bergmann' },
+                      Hestur: {
+                        type: 'string',
+                        example: 'Díana frá Bakkakoti',
+                      },
+                      E1: { type: 'string', example: '8.6' },
+                      E2: { type: 'string', example: '8.8' },
+                      E3: { type: 'string', example: '8.6' },
+                      E4: { type: 'string', example: '8.3' },
+                      E5: { type: 'string', example: '8.9' },
+                      E6: { type: 'string', example: '8.64' },
+                      adal: {
+                        type: 'object',
+                        properties: {
+                          _title: { type: 'string', example: 'Aðaleinkunn' },
+                          E1: { type: 'string', example: '8.6' },
+                          E2: { type: 'string', example: '8.8' },
+                          E3: { type: 'string', example: '8.6' },
+                          E4: { type: 'string', example: '8.3' },
+                          E5: { type: 'string', example: '8.9' },
+                          E6: { type: 'string', example: '8.64' },
+                        },
+                      },
+                      tolt_frjals_hradi: {
+                        type: 'object',
+                        properties: {
+                          _title: {
+                            type: 'string',
+                            example: 'Tölt frjáls hraði',
+                          },
+                          E1: { type: 'string', example: '9' },
+                          E2: { type: 'string', example: '8.5' },
+                          E3: { type: 'string', example: '8.5' },
+                          E4: { type: 'string', example: '8.5' },
+                          E5: { type: 'string', example: '8.5' },
+                          E6: { type: 'string', example: '8.6' },
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
           },
+        },
+      },
+    },
+    '/current/{eventId}': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Get Competition Data for Specific Event',
+        description:
+          'Returns complete leaderboard data only if the currently active competition matches the requested event ID. Returns 404 if event does not match.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+            example: 70617,
+          },
+        ],
+        responses: {
+          200: { description: 'Current competition data for event' },
+          404: { description: 'No data available for this event' },
+        },
+      },
+    },
+    '/current/{eventId}/results/a': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Get A-Finals Gait Results',
+        description:
+          'Returns gait-specific results grouped by gait type for A-finals (competitionId 2). Each gait includes all riders with their individual judge scores (E1-E5) and average (E6). Perfect for displaying gait-specific graphics in vMix.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+            example: 70617,
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Gangtegund results for A-úrslit',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      gangtegundKey: {
+                        type: 'string',
+                        example: 'tolt_frjals_hradi',
+                      },
+                      title: { type: 'string', example: 'Tölt frjáls hraði' },
+                      einkunnir: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            nafn: {
+                              type: 'string',
+                              example: 'Jón Ársæll Bergmann',
+                            },
+                            saeti: { type: 'string', example: '1' },
+                            E1: { type: 'string', example: '9' },
+                            E2: { type: 'string', example: '8.5' },
+                            E3: { type: 'string', example: '8.5' },
+                            E4: { type: 'string', example: '8.5' },
+                            E5: { type: 'string', example: '8.5' },
+                            E6: { type: 'string', example: '8.6' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          404: { description: 'No A-úrslit data available' },
+        },
+      },
+    },
+    '/current/{eventId}/results/b': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Get B-Finals Gait Results',
+        description:
+          'Returns gait-specific results grouped by gait type for B-finals (competitionId 3). Each gait includes all riders with their individual judge scores (E1-E5) and average (E6). Perfect for displaying gait-specific graphics in vMix.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+            example: 70617,
+          },
+        ],
+        responses: {
+          200: { description: 'Gangtegund results for B-úrslit' },
+          404: { description: 'No B-úrslit data available' },
+        },
+      },
+    },
+    '/leaderboard.csv': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Get Leaderboard (CSV Format)',
+        description:
+          'Returns complete leaderboard in CSV format for compatibility with legacy systems or spreadsheet imports.',
+        responses: {
+          200: {
+            description: 'Leaderboard CSV',
+            content: { 'text/csv': { schema: { type: 'string' } } },
+          },
+        },
+      },
+    },
+    '/event/{eventId}/participants': {
+      get: {
+        tags: ['Event Information'],
+        summary: 'Get Event Participants',
+        description:
+          'Returns complete list of all participants (riders and horses) registered for the event. Includes rider names, horse names, breeding numbers, clubs, colors, and competition disciplines.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+            example: 70617,
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Participants data',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    res: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          keppandi_numer: { type: 'integer' },
+                          knapi_nafn: { type: 'string' },
+                          hross_nafn: { type: 'string' },
+                          hross_fulltnafn: { type: 'string' },
+                          faedingarnumer: { type: 'string' },
+                          knapi_adildarfelag: { type: 'string' },
+                          eigandi_adildarfelag: { type: 'string' },
+                          litur: { type: 'string' },
+                          varaknapi_nafn: { type: 'string' },
+                          varapar: { type: 'string' },
+                          keppnisgreinar: { type: 'array' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid event ID' },
+        },
+      },
+    },
+    '/event/{eventId}/tests': {
+      get: {
+        tags: ['Event Information'],
+        summary: 'Get Event Competitions',
+        description:
+          'Returns all competitions/tests scheduled for the event. Includes competition names, class names, competition IDs (1=Preliminary, 2=A-Finals, 3=B-Finals, etc.), and starting list publication status.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+            example: 70617,
+          },
+        ],
+        responses: {
+          200: { description: 'Event tests data' },
+          400: { description: 'Invalid event ID' },
+        },
+      },
+    },
+    '/events/search': {
+      get: {
+        tags: ['Event Information'],
+        summary: 'Search Events',
+        description:
+          'Search for events by year, location, name, country code, or other criteria. Returns list of matching events with basic information.',
+        parameters: [
+          {
+            name: 'ar',
+            in: 'query',
+            schema: { type: 'integer' },
+            example: 2026,
+          },
+          {
+            name: 'land_kodi',
+            in: 'query',
+            schema: { type: 'string' },
+            example: 'IS',
+          },
+          {
+            name: 'motsheiti',
+            in: 'query',
+            schema: { type: 'string' },
+            example: 'Landsmót',
+          },
+        ],
+        responses: {
+          200: { description: 'Search results' },
         },
       },
     },

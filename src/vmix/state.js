@@ -8,6 +8,9 @@
 
 let state = {
   leaderboard: [],
+  eventId: null,
+  classId: null,
+  competitionId: null,
 };
 
 /**
@@ -17,6 +20,9 @@ let state = {
 export function initializeState() {
   state = {
     leaderboard: [],
+    eventId: null,
+    classId: null,
+    competitionId: null,
   };
 }
 
@@ -37,12 +43,30 @@ export function getLeaderboardState() {
 }
 
 /**
+ * Get current competition metadata
+ * @returns {object} Object with eventId, classId, competitionId
+ */
+export function getCompetitionMetadata() {
+  return {
+    eventId: state.eventId,
+    classId: state.classId,
+    competitionId: state.competitionId,
+  };
+}
+
+/**
  * Update state atomically
  * Replaces entire state array in a single operation
  * @param {array} newLeaderboard - New leaderboard state
+ * @param {number} eventId - Event identifier
+ * @param {number} classId - Class identifier
+ * @param {number} competitionId - Competition identifier
  */
-export function updateState(newLeaderboard) {
+export function updateState(newLeaderboard, eventId, classId, competitionId) {
   state = {
     leaderboard: newLeaderboard,
+    eventId,
+    classId,
+    competitionId,
   };
 }

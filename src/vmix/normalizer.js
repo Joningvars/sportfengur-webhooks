@@ -22,7 +22,7 @@ function calculateAldur(faedingarnumer) {
 }
 
 /**
- * Round score to 2 decimal places and return as string
+ * Format score to 2 decimal places without rounding and return as string
  * Handles both comma and dot decimal separators
  */
 function roundScore(value) {
@@ -34,8 +34,11 @@ function roundScore(value) {
   const num = Number(strValue);
   if (!Number.isFinite(num)) return '';
 
-  // Format with up to 2 decimal places, removing trailing zeros
-  return num.toFixed(2).replace(/\.?0+$/, '');
+  // Truncate to 2 decimal places without rounding
+  const truncated = Math.floor(num * 100) / 100;
+
+  // Format and remove trailing zeros
+  return truncated.toFixed(2).replace(/\.?0+$/, '');
 }
 
 /**
@@ -100,6 +103,7 @@ function extractGaitScores(judges) {
 
   // Process each judge for gait-specific scores
   const gaitMaps = {};
+  const gaitTitles = {}; // Store original gait type names
 
   judges.slice(0, 5).forEach((judge, judgeIndex) => {
     const breakdown = judge?.sundurlidun_einkunna;
@@ -116,6 +120,7 @@ function extractGaitScores(judges) {
 
       if (!gaitMaps[gaitKey]) {
         gaitMaps[gaitKey] = new Map();
+        gaitTitles[gaitKey] = gaitType; // Store original title
       }
       gaitMaps[gaitKey].set(judgeIndex, roundScore(score));
     }
@@ -125,7 +130,9 @@ function extractGaitScores(judges) {
   Object.keys(gaitMaps).forEach((gaitKey) => {
     const map = gaitMaps[gaitKey];
     const scores = [];
-    gaitScores[gaitKey] = {};
+    gaitScores[gaitKey] = {
+      _title: gaitTitles[gaitKey], // Store original title with underscore prefix
+    };
 
     // Add E1-E5
     for (let i = 0; i < 5; i++) {
@@ -175,6 +182,12 @@ export function normalizeCurrent(apiResponse) {
       FelagEiganda: '',
       Lid: '',
       NafnBIG: '',
+      E1: '',
+      E2: '',
+      E3: '',
+      E4: '',
+      E5: '',
+      E6: '',
       adal: {
         E1: '',
         E2: '',
@@ -228,6 +241,12 @@ export function normalizeCurrent(apiResponse) {
     FelagEiganda: String(apiResponse.adildarfelag_eiganda || ''),
     Lid: '',
     NafnBIG: riderName ? riderName.toUpperCase() : '',
+    E1: judgeScores[0] || '',
+    E2: judgeScores[1] || '',
+    E3: judgeScores[2] || '',
+    E4: judgeScores[3] || '',
+    E5: judgeScores[4] || '',
+    E6: roundScore(apiResponse.keppandi_medaleinkunn),
     ...gaitScores,
     timestamp: new Date().toISOString(),
   };
@@ -289,6 +308,12 @@ export function normalizeLeaderboard(apiResponse) {
         FelagEiganda: String(entry.adildarfelag_eiganda || ''),
         Lid: '',
         NafnBIG: riderName ? riderName.toUpperCase() : '',
+        E1: judgeScores[0] || '',
+        E2: judgeScores[1] || '',
+        E3: judgeScores[2] || '',
+        E4: judgeScores[3] || '',
+        E5: judgeScores[4] || '',
+        E6: roundScore(entry.keppandi_medaleinkunn),
         ...gaitScores,
       };
     })

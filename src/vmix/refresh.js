@@ -189,8 +189,8 @@ async function refreshWithTimeout() {
     `[vMix Refresh] Normalized to ${normalizedLeaderboard.length} entries`,
   );
 
-  // Update state atomically
-  updateState(normalizedLeaderboard);
+  // Update state atomically with metadata
+  updateState(normalizedLeaderboard, eventId, classId, competitionId);
 
   console.log('[vMix Refresh] State updated');
 }

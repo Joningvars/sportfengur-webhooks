@@ -20,7 +20,6 @@ registerRootRoute(app);
 registerWebhookRoutes(app);
 registerTestRoute(app);
 registerHealthRoute(app);
-registerCurrentRoutes(app);
 registerCacheRoutes(app);
 registerDocs(app);
 registerVmixRoutes(app);

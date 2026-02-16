@@ -5,7 +5,6 @@ import {
   DEDUPE_TTL_MS,
   DEBUG_LOGS,
   EVENT_ID_FILTER,
-  VMIX_EVENT_ID,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
 // writing to a single output file; keep sheet names for competitions
@@ -411,31 +410,24 @@ async function handleWebhook(req, res, eventName) {
     // Trigger vMix refresh asynchronously (non-blocking)
     // Set competition context if available
     if (payload.eventId && payload.classId && resolvedCompetitionId) {
-      // Check if this event matches the VMIX_EVENT_ID filter
-      if (VMIX_EVENT_ID != null && Number(payload.eventId) !== VMIX_EVENT_ID) {
-        logWebhook(
-          `[vMix] Skipping refresh - eventId ${payload.eventId} does not match VMIX_EVENT_ID=${VMIX_EVENT_ID}`,
-        );
-      } else {
-        // Force refresh for starting list webhooks, use cache for results webhooks
-        const forceRefresh =
-          eventName === 'event_raslisti_birtur' ||
-          eventName === 'event_naesti_sprettur';
+      // Force refresh for starting list webhooks, use cache for results webhooks
+      const forceRefresh =
+        eventName === 'event_raslisti_birtur' ||
+        eventName === 'event_naesti_sprettur';
 
-        setCompetitionContext(
-          payload.eventId,
-          payload.classId,
-          resolvedCompetitionId,
-          forceRefresh,
+      setCompetitionContext(
+        payload.eventId,
+        payload.classId,
+        resolvedCompetitionId,
+        forceRefresh,
+      );
+      try {
+        scheduleRefresh();
+        logWebhook(
+          `[vMix] Refresh scheduled for event=${payload.eventId} class=${payload.classId} competition=${resolvedCompetitionId}${forceRefresh ? ' (force refresh)' : ''}`,
         );
-        try {
-          scheduleRefresh();
-          logWebhook(
-            `[vMix] Refresh scheduled for event=${payload.eventId} class=${payload.classId} competition=${resolvedCompetitionId}${forceRefresh ? ' (force refresh)' : ''}`,
-          );
-        } catch (error) {
-          logWebhook('[vMix] Refresh scheduling failed:', error);
-        }
+      } catch (error) {
+        logWebhook('[vMix] Refresh scheduling failed:', error);
       }
     } else {
       logWebhook(
