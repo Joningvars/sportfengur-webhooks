@@ -272,10 +272,43 @@ export const openApiSpec = {
         },
       },
     },
+    '/event/{eventId}/leaderboards.zip': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'All Leaderboards ZIP',
+        description:
+          'Returns a ZIP file with current and per-competition CSV exports (start and rank).',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'ZIP archive',
+            content: {
+              'application/zip': {
+                schema: {
+                  type: 'string',
+                  format: 'binary',
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid event ID' },
+          404: { description: 'No data available for this event' },
+        },
+      },
+    },
     '/leaderboard.csv': {
       get: {
         tags: ['Competition Data'],
         summary: 'Current Leaderboard CSV',
+        description:
+          'Returns CSV for the currently active competition state only.',
         responses: {
           200: {
             description: 'CSV output',

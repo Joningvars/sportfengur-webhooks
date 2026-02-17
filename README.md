@@ -34,11 +34,16 @@ http://localhost:3000/docs
   - `sort`: `start` (sjálfgefið) eða `rank`
 - `GET /event/{eventId}/{competitionType}/csv` skilar sama leaderboard sem CSV:
   - `sort`: `start` (sjálfgefið) eða `rank`
+- `GET /event/{eventId}/leaderboards.zip` skilar ZIP með mörgum CSV skrám:
+  - `current-{eventId}.csv`
+  - `{competitionType}-{eventId}-start.csv`
+  - `{competitionType}-{eventId}-rank.csv`
 - Dæmi:
   - `/event/70617/a-urslit`
   - `/event/70617/b-urslit?sort=rank`
   - `/event/70617/a-urslit/csv`
   - `/event/70617/a-urslit/csv?sort=rank`
+  - `/event/70617/leaderboards.zip`
 
 ## 6) Handvirk einkunnaköll (valfrjálst)
 Skripturnar eru í `release\`:

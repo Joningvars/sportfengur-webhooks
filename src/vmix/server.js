@@ -8,6 +8,7 @@ import { leaderboardToCsv } from './normalizer.js';
 import { apiGetWithRetry } from '../sportfengur.js';
 import { EVENT_ID_FILTER, SPORTFENGUR_LOCALE } from '../config.js';
 import { log } from '../logger.js';
+import JSZip from 'jszip';
 
 const COMPETITION_TYPE_TO_ID = {
   forkeppni: 1,
@@ -31,7 +32,7 @@ function isRequestedEventAllowed(requestedEventId) {
   return requestedEventId === EVENT_ID_FILTER;
 }
 
-function resolveCompetitionRequest(req, res) {
+function resolveEventIdRequest(req, res) {
   const requestedEventId = Number(req.params.eventId);
   if (!Number.isInteger(requestedEventId)) {
     res.status(400).json({ error: 'Invalid event ID' });
@@ -41,6 +42,12 @@ function resolveCompetitionRequest(req, res) {
     res.status(404).json({ error: 'No data available for this event' });
     return null;
   }
+  return requestedEventId;
+}
+
+function resolveCompetitionRequest(req, res) {
+  const requestedEventId = resolveEventIdRequest(req, res);
+  if (requestedEventId == null) return null;
 
   const competitionType = String(req.params.competitionType || '')
     .trim()
@@ -82,13 +89,8 @@ function resolveCompetitionRequest(req, res) {
 
 export function registerVmixRoutes(app) {
   app.get('/event/:eventId/current', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    if (!Number.isInteger(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-    if (!isRequestedEventAllowed(requestedEventId)) {
-      return res.status(404).json({ error: 'No data available for this event' });
-    }
+    const requestedEventId = resolveEventIdRequest(req, res);
+    if (requestedEventId == null) return;
 
     const metadata = getCompetitionMetadata();
     if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
@@ -106,6 +108,59 @@ export function registerVmixRoutes(app) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/json');
     res.json(currentState);
+  });
+
+  app.get('/event/:eventId/leaderboards.zip', async (req, res) => {
+    const requestedEventId = resolveEventIdRequest(req, res);
+    if (requestedEventId == null) return;
+
+    const zip = new JSZip();
+    const currentMetadata = getCompetitionMetadata();
+    const currentState =
+      currentMetadata.eventId === null ||
+      currentMetadata.eventId === requestedEventId
+        ? getCurrentState()
+        : [];
+    zip.file(
+      `current-${requestedEventId}.csv`,
+      leaderboardToCsv(currentState),
+    );
+
+    for (const [competitionType, competitionId] of Object.entries(
+      COMPETITION_TYPE_TO_ID,
+    )) {
+      const metadata = getCompetitionSpecificMetadata(competitionId);
+      const competitionState =
+        metadata.eventId === null || metadata.eventId === requestedEventId
+          ? getLeaderboardState(competitionId)
+          : [];
+
+      const startRows = sortLeaderboard(competitionState, 'start');
+      const rankRows = sortLeaderboard(competitionState, 'rank');
+
+      zip.file(
+        `${competitionType}-${requestedEventId}-start.csv`,
+        leaderboardToCsv(startRows),
+      );
+      zip.file(
+        `${competitionType}-${requestedEventId}-rank.csv`,
+        leaderboardToCsv(rankRows),
+      );
+    }
+
+    const archive = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="leaderboards-${requestedEventId}.zip"`,
+    );
+    res.send(archive);
   });
 
   app.get('/event/:eventId/:competitionType', (req, res) => {
