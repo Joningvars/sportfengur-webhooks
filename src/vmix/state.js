@@ -1,72 +1,79 @@
-/**
- * State Manager for vMix Data Server
- *
- * Maintains in-memory competition state with atomic update operations.
- * State is immutable from outside - getters return current state,
- * updates replace entire objects atomically.
- */
 
 let state = {
-  leaderboard: [],
-  eventId: null,
-  classId: null,
-  competitionId: null,
+  competitions: {
+    1: { leaderboard: [], eventId: null, classId: null },
+    2: { leaderboard: [], eventId: null, classId: null },
+    3: { leaderboard: [], eventId: null, classId: null },
+  },
+  currentCompetitionId: null,
+  currentEventId: null,
+  currentClassId: null,
 };
 
-/**
- * Initialize state to empty values
- * Called on application startup
- */
 export function initializeState() {
   state = {
-    leaderboard: [],
+    competitions: {
+      1: { leaderboard: [], eventId: null, classId: null },
+      2: { leaderboard: [], eventId: null, classId: null },
+      3: { leaderboard: [], eventId: null, classId: null },
+    },
+    currentCompetitionId: null,
+    currentEventId: null,
+    currentClassId: null,
+  };
+}
+
+export function getCurrentState() {
+  if (
+    state.currentCompetitionId &&
+    state.competitions[state.currentCompetitionId]
+  ) {
+    return state.competitions[state.currentCompetitionId].leaderboard;
+  }
+  return [];
+}
+
+export function getLeaderboardState(competitionId = null) {
+  const compId = competitionId || state.currentCompetitionId;
+  if (compId && state.competitions[compId]) {
+    return state.competitions[compId].leaderboard;
+  }
+  return [];
+}
+
+export function getCompetitionMetadata() {
+  return {
+    eventId: state.currentEventId,
+    classId: state.currentClassId,
+    competitionId: state.currentCompetitionId,
+  };
+}
+
+export function getCompetitionSpecificMetadata(competitionId) {
+  if (state.competitions[competitionId]) {
+    return {
+      eventId: state.competitions[competitionId].eventId,
+      classId: state.competitions[competitionId].classId,
+      competitionId: competitionId,
+    };
+  }
+  return {
     eventId: null,
     classId: null,
     competitionId: null,
   };
 }
 
-/**
- * Get current leaderboard state (all players)
- * @returns {array} All leaderboard entries
- */
-export function getCurrentState() {
-  return state.leaderboard;
-}
-
-/**
- * Get leaderboard state
- * @returns {array} Leaderboard entries
- */
-export function getLeaderboardState() {
-  return state.leaderboard;
-}
-
-/**
- * Get current competition metadata
- * @returns {object} Object with eventId, classId, competitionId
- */
-export function getCompetitionMetadata() {
-  return {
-    eventId: state.eventId,
-    classId: state.classId,
-    competitionId: state.competitionId,
-  };
-}
-
-/**
- * Update state atomically
- * Replaces entire state array in a single operation
- * @param {array} newLeaderboard - New leaderboard state
- * @param {number} eventId - Event identifier
- * @param {number} classId - Class identifier
- * @param {number} competitionId - Competition identifier
- */
 export function updateState(newLeaderboard, eventId, classId, competitionId) {
-  state = {
-    leaderboard: newLeaderboard,
-    eventId,
-    classId,
-    competitionId,
-  };
+  if (state.competitions[competitionId]) {
+    state.competitions[competitionId] = {
+      leaderboard: newLeaderboard,
+      eventId,
+      classId,
+    };
+  }
+
+  state.currentCompetitionId = competitionId;
+  state.currentEventId = eventId;
+  state.currentClassId = classId;
 }

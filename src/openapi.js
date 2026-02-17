@@ -1,36 +1,86 @@
+const webhookSecretSecurity = [{ webhookSecret: [] }];
+
+const eventIdPathParameter = {
+  name: 'eventId',
+  in: 'path',
+  required: true,
+  schema: { type: 'integer' },
+  example: 70617,
+};
+
+function webhookRequest(required, example, properties = {}) {
+  return {
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          required,
+          properties: {
+            eventId: { type: 'integer' },
+            classId: { type: 'integer' },
+            competitionId: { type: 'integer' },
+            published: { type: 'integer' },
+            ...properties,
+          },
+        },
+        example,
+      },
+    },
+  };
+}
+
+function webhookPostOperation(summary, description, requestBody) {
+  return {
+    tags: ['Webhooks'],
+    summary,
+    description,
+    security: webhookSecretSecurity,
+    requestBody,
+    responses: {
+      200: { description: 'Skeyti mottekid' },
+      400: { description: 'Missing required fields' },
+      401: { description: 'Unauthorized' },
+    },
+  };
+}
+
+function eventFilteredLeaderboardOperation(summary, description) {
+  return {
+    tags: ['Event-Scoped'],
+    summary,
+    description,
+    parameters: [eventIdPathParameter],
+    responses: {
+      200: {
+        description: 'Leaderboard entries',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/LeaderboardEntry' },
+            },
+          },
+        },
+      },
+      400: { description: 'Invalid event ID' },
+      404: { description: 'No data available for this event' },
+    },
+  };
+}
+
 export const openApiSpec = {
   openapi: '3.0.3',
   info: {
-    title: 'Eiðfaxi Live Competition API',
+    title: 'Eidfaxi Live Competition API',
     version: '1.0.0',
-    description: `Real-time competition data API for Icelandic horse shows. Provides live scores, leaderboards, and event information for vMix graphics integration.
-
-## Features
-- **Real-time Updates**: Webhook-driven data refresh for instant score updates
-- **Event Filtering**: Get data for specific events and competitions
-- **Gait-Specific Results**: Detailed scores for each gait type (tölt, trot, pace, etc.)
-- **vMix Integration**: JSON format optimized for live graphics
-- **Caching**: Smart caching for starting lists with automatic invalidation
-
-## Data Flow
-1. Competition management system sends webhooks when scores/starting lists change
-2. Eiðfaxi fetches and caches data from competition API
-3. vMix polls endpoints for real-time graphics updates
-
-## Authentication
-Webhook endpoints require \`x-webhook-secret\` header for security.`,
+    description:
+      'Real-time competition data API for Icelandic horse shows and vMix integrations.',
     contact: {
-      name: 'Eiðfaxi Support',
-    },
-    license: {
-      name: 'MIT',
+      name: 'Eidfaxi Support',
     },
   },
   servers: [
-    {
-      url: 'https://eidfaxi.ngrok.app',
-      description: 'Production server',
-    },
     {
       url: 'http://localhost:3000',
       description: 'Development server',
@@ -39,226 +89,53 @@ Webhook endpoints require \`x-webhook-secret\` header for security.`,
   tags: [
     {
       name: 'Competition Data',
-      description: 'Real-time competition scores and leaderboards',
+      description: 'Live leaderboard and result endpoints',
+    },
+    {
+      name: 'Event-Scoped',
+      description: 'All endpoints gated by an eventId path parameter',
     },
     {
       name: 'Event Information',
-      description: 'Event metadata, participants, and competition schedules',
+      description: 'Participants, tests, and event search endpoints',
     },
     {
       name: 'Webhooks',
-      description: 'Webhook endpoints for receiving updates from Sportfengur',
+      description: 'Sportfengur webhook ingestion endpoints',
     },
     {
       name: 'System',
-      description: 'Health checks and system status',
+      description: 'Health and API schema endpoints',
     },
   ],
   paths: {
-    '/event_einkunn_saeti': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Score Update Webhook',
-        description:
-          'Receives notifications when rider scores are updated. Triggers automatic fetch of latest results. E1-E5 represent individual judge scores, E6 is the average score.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId', 'classId', 'competitionId'],
-                properties: {
-                  eventId: { type: 'integer' },
-                  classId: { type: 'integer' },
-                  competitionId: { type: 'integer' },
+    '/': {
+      get: {
+        tags: ['System'],
+        summary: 'Root Redirect',
+        description: 'Redirects to /docs.',
+        responses: {
+          302: { description: 'Redirect response' },
+        },
+      },
+    },
+    '/openapi.json': {
+      get: {
+        tags: ['System'],
+        summary: 'OpenAPI Document',
+        description: 'Returns this API specification as JSON.',
+        responses: {
+          200: {
+            description: 'OpenAPI document',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: true,
                 },
               },
-              example: { eventId: 999, classId: 789, competitionId: 1 },
             },
           },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
-        },
-      },
-    },
-    '/event_mot_skra': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Event Registration Webhook',
-        description:
-          'Receives notifications when event registration data changes.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId'],
-                properties: { eventId: { type: 'integer' } },
-              },
-              example: { eventId: 999 },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
-        },
-      },
-    },
-    '/event_keppendalisti_breyta': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Participant List Update Webhook',
-        description:
-          'Receives notifications when the participant list (riders and horses) is modified.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId'],
-                properties: { eventId: { type: 'integer' } },
-              },
-              example: { eventId: 999 },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
-        },
-      },
-    },
-    '/event_motadagskra_breytist': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Event Schedule Update Webhook',
-        description:
-          'Receives notifications when the event schedule or program changes.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId'],
-                properties: { eventId: { type: 'integer' } },
-              },
-              example: { eventId: 999 },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
-        },
-      },
-    },
-    '/event_raslisti_birtur': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Starting List Published Webhook',
-        description:
-          'Receives notifications when a starting list is published. Triggers fetch and cache of starting list data. Cache is invalidated on subsequent updates.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId', 'classId', 'published'],
-                properties: {
-                  eventId: { type: 'integer' },
-                  classId: { type: 'integer' },
-                  published: { type: 'integer' },
-                  competitionId: { type: 'integer' },
-                },
-              },
-              example: {
-                eventId: 999,
-                classId: 789,
-                published: 1,
-                competitionId: 1,
-              },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
-        },
-      },
-    },
-    '/event_naesti_sprettur': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Next Heat Webhook',
-        description:
-          'Receives notifications when the next heat/round is ready. Triggers starting list fetch with cache refresh.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId', 'classId', 'competitionId'],
-                properties: {
-                  eventId: { type: 'integer' },
-                  classId: { type: 'integer' },
-                  competitionId: { type: 'integer' },
-                },
-              },
-              example: { eventId: 999, classId: 789, competitionId: 1 },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
-        },
-      },
-    },
-    '/event_keppnisgreinar': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Competition Disciplines Webhook',
-        description:
-          'Receives notifications when competition disciplines or classes are updated.',
-        security: [{ webhookSecret: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['eventId'],
-                properties: { eventId: { type: 'integer' } },
-              },
-              example: { eventId: 999 },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Skeyti motttekid' },
-          400: { description: 'Missing required fields' },
-          401: { description: 'Unauthorized' },
         },
       },
     },
@@ -266,29 +143,120 @@ Webhook endpoints require \`x-webhook-secret\` header for security.`,
       get: {
         tags: ['System'],
         summary: 'Health Check',
-        description:
-          'Returns server health status and last webhook activity timestamps.',
         responses: {
           200: {
-            description: 'Server is healthy',
+            description: 'Server health status',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/event_einkunn_saeti': {
+      post: webhookPostOperation(
+        'Score Update Webhook',
+        'Receives score updates and refreshes results for a class/competition.',
+        webhookRequest(
+          ['eventId', 'classId', 'competitionId'],
+          { eventId: 999, classId: 789, competitionId: 1 },
+        ),
+      ),
+    },
+    '/event_mot_skra': {
+      post: webhookPostOperation(
+        'Event Registration Webhook',
+        'Receives event registration updates.',
+        webhookRequest(['eventId'], { eventId: 999 }),
+      ),
+    },
+    '/event_keppendalisti_breyta': {
+      post: webhookPostOperation(
+        'Participant List Update Webhook',
+        'Receives participant list updates.',
+        webhookRequest(['eventId'], { eventId: 999 }),
+      ),
+    },
+    '/event_motadagskra_breytist': {
+      post: webhookPostOperation(
+        'Event Schedule Update Webhook',
+        'Receives event schedule updates.',
+        webhookRequest(['eventId'], { eventId: 999 }),
+      ),
+    },
+    '/event_raslisti_birtur': {
+      post: webhookPostOperation(
+        'Starting List Published Webhook',
+        'Receives starting list publication updates.',
+        webhookRequest(
+          ['eventId', 'classId', 'published'],
+          { eventId: 999, classId: 789, published: 1, competitionId: 1 },
+        ),
+      ),
+    },
+    '/event_naesti_sprettur': {
+      post: webhookPostOperation(
+        'Next Heat Webhook',
+        'Receives next heat updates and refreshes starting list data.',
+        webhookRequest(
+          ['eventId', 'classId', 'competitionId'],
+          { eventId: 999, classId: 789, competitionId: 1 },
+        ),
+      ),
+    },
+    '/event_keppnisgreinar': {
+      post: webhookPostOperation(
+        'Competition Disciplines Webhook',
+        'Receives updates about tests/competitions for an event.',
+        webhookRequest(['eventId'], { eventId: 999 }),
+      ),
+    },
+    '/webhooks/test': {
+      post: {
+        tags: ['Webhooks'],
+        summary: 'Webhook Test Endpoint',
+        description: 'Accepts any payload and returns a confirmation string.',
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Skeyti mottekid' },
+        },
+      },
+    },
+    '/cache/raslisti/clear': {
+      post: {
+        tags: ['System'],
+        summary: 'Clear Starting List Cache',
+        description: 'Clears in-memory starting list cache.',
+        responses: {
+          200: { description: 'Cache hreinsad' },
+        },
+      },
+    },
+
+    '/current': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Current Leaderboard',
+        description:
+          'Returns leaderboard for the currently active competition context.',
+        responses: {
+          200: {
+            description: 'Leaderboard entries',
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  properties: {
-                    status: { type: 'string', example: 'ok' },
-                    lastWebhookAt: {
-                      type: 'string',
-                      format: 'date-time',
-                      nullable: true,
-                    },
-                    lastWebhookProcessedAt: {
-                      type: 'string',
-                      format: 'date-time',
-                      nullable: true,
-                    },
-                    lastError: { type: 'string', nullable: true },
-                  },
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
                 },
               },
             },
@@ -296,64 +264,113 @@ Webhook endpoints require \`x-webhook-secret\` header for security.`,
         },
       },
     },
-    '/current': {
+    '/forkeppni': {
       get: {
         tags: ['Competition Data'],
-        summary: 'Get Current Competition Data',
-        description:
-          'Returns complete leaderboard for the currently active competition. Includes all riders with main scores (E1-E6) and gait-specific scores (tölt, trot, pace, etc.). Data is updated in real-time via webhooks. Use this endpoint when you want all data regardless of event.',
+        summary: 'Forkeppni (Starting Order)',
         responses: {
           200: {
-            description: 'Current competition data',
+            description: 'Forkeppni entries sorted by Nr',
             content: {
               'application/json': {
                 schema: {
                   type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      Nr: { type: 'string', example: '3' },
-                      Saeti: { type: 'string', example: '1' },
-                      Knapi: { type: 'string', example: 'Jón Ársæll Bergmann' },
-                      Hestur: {
-                        type: 'string',
-                        example: 'Díana frá Bakkakoti',
-                      },
-                      E1: { type: 'string', example: '8.6' },
-                      E2: { type: 'string', example: '8.8' },
-                      E3: { type: 'string', example: '8.6' },
-                      E4: { type: 'string', example: '8.3' },
-                      E5: { type: 'string', example: '8.9' },
-                      E6: { type: 'string', example: '8.64' },
-                      adal: {
-                        type: 'object',
-                        properties: {
-                          _title: { type: 'string', example: 'Aðaleinkunn' },
-                          E1: { type: 'string', example: '8.6' },
-                          E2: { type: 'string', example: '8.8' },
-                          E3: { type: 'string', example: '8.6' },
-                          E4: { type: 'string', example: '8.3' },
-                          E5: { type: 'string', example: '8.9' },
-                          E6: { type: 'string', example: '8.64' },
-                        },
-                      },
-                      tolt_frjals_hradi: {
-                        type: 'object',
-                        properties: {
-                          _title: {
-                            type: 'string',
-                            example: 'Tölt frjáls hraði',
-                          },
-                          E1: { type: 'string', example: '9' },
-                          E2: { type: 'string', example: '8.5' },
-                          E3: { type: 'string', example: '8.5' },
-                          E4: { type: 'string', example: '8.5' },
-                          E5: { type: 'string', example: '8.5' },
-                          E6: { type: 'string', example: '8.6' },
-                        },
-                      },
-                    },
-                  },
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/forkeppni/sorted': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Forkeppni (Ranked)',
+        responses: {
+          200: {
+            description: 'Forkeppni entries sorted by Saeti',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/a': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'A-urslit (Starting Order)',
+        responses: {
+          200: {
+            description: 'A-urslit entries sorted by Nr',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/a/sorted': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'A-urslit (Ranked)',
+        responses: {
+          200: {
+            description: 'A-urslit entries sorted by Saeti',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/b': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'B-urslit (Starting Order)',
+        responses: {
+          200: {
+            description: 'B-urslit entries sorted by Nr',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/b/sorted': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'B-urslit (Ranked)',
+        responses: {
+          200: {
+            description: 'B-urslit entries sorted by Saeti',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/LeaderboardEntry' },
                 },
               },
             },
@@ -362,189 +379,149 @@ Webhook endpoints require \`x-webhook-secret\` header for security.`,
       },
     },
     '/current/{eventId}': {
-      get: {
-        tags: ['Competition Data'],
-        summary: 'Get Competition Data for Specific Event',
-        description:
-          'Returns complete leaderboard data only if the currently active competition matches the requested event ID. Returns 404 if event does not match.',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-            example: 70617,
-          },
-        ],
-        responses: {
-          200: { description: 'Current competition data for event' },
-          404: { description: 'No data available for this event' },
-        },
-      },
+      get: eventFilteredLeaderboardOperation(
+        'Current Leaderboard for Event',
+        'Returns current leaderboard only when current context matches the requested event ID.',
+      ),
     },
-    '/current/{eventId}/results/a': {
+    '/{eventId}/forkeppni': {
+      get: eventFilteredLeaderboardOperation(
+        'Forkeppni for Event (Starting Order)',
+        'Returns Forkeppni data for a specific event sorted by starting order.',
+      ),
+    },
+    '/{eventId}/a': {
+      get: eventFilteredLeaderboardOperation(
+        'A-urslit for Event (Starting Order)',
+        'Returns A-urslit data for a specific event sorted by starting order.',
+      ),
+    },
+    '/{eventId}/b': {
+      get: eventFilteredLeaderboardOperation(
+        'B-urslit for Event (Starting Order)',
+        'Returns B-urslit data for a specific event sorted by starting order.',
+      ),
+    },
+    '/{eventId}/forkeppni/sorted': {
+      get: eventFilteredLeaderboardOperation(
+        'Forkeppni for Event (Ranked)',
+        'Returns Forkeppni data for a specific event sorted by rank.',
+      ),
+    },
+    '/{eventId}/a/sorted': {
+      get: eventFilteredLeaderboardOperation(
+        'A-urslit for Event (Ranked)',
+        'Returns A-urslit data for a specific event sorted by rank.',
+      ),
+    },
+    '/{eventId}/b/sorted': {
+      get: eventFilteredLeaderboardOperation(
+        'B-urslit for Event (Ranked)',
+        'Returns B-urslit data for a specific event sorted by rank.',
+      ),
+    },
+    '/{eventId}/results/a': {
       get: {
-        tags: ['Competition Data'],
-        summary: 'Get A-Finals Gait Results',
-        description:
-          'Returns gait-specific results grouped by gait type for A-finals (competitionId 2). Each gait includes all riders with their individual judge scores (E1-E5) and average (E6). Perfect for displaying gait-specific graphics in vMix.',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-            example: 70617,
-          },
-        ],
+        tags: ['Event-Scoped'],
+        summary: 'A-urslit Gait Results for Event',
+        parameters: [eventIdPathParameter],
         responses: {
           200: {
-            description: 'Gangtegund results for A-úrslit',
+            description: 'Gangtegund results for A-urslit',
             content: {
               'application/json': {
                 schema: {
                   type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      gangtegundKey: {
-                        type: 'string',
-                        example: 'tolt_frjals_hradi',
-                      },
-                      title: { type: 'string', example: 'Tölt frjáls hraði' },
-                      einkunnir: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            nafn: {
-                              type: 'string',
-                              example: 'Jón Ársæll Bergmann',
-                            },
-                            saeti: { type: 'string', example: '1' },
-                            E1: { type: 'string', example: '9' },
-                            E2: { type: 'string', example: '8.5' },
-                            E3: { type: 'string', example: '8.5' },
-                            E4: { type: 'string', example: '8.5' },
-                            E5: { type: 'string', example: '8.5' },
-                            E6: { type: 'string', example: '8.6' },
-                          },
-                        },
-                      },
-                    },
-                  },
+                  items: { $ref: '#/components/schemas/GangtegundResult' },
                 },
               },
             },
           },
-          404: { description: 'No A-úrslit data available' },
+          400: { description: 'Invalid event ID' },
+          404: { description: 'No A-urslit data available for this event' },
         },
       },
     },
-    '/current/{eventId}/results/b': {
+    '/{eventId}/results/b': {
       get: {
-        tags: ['Competition Data'],
-        summary: 'Get B-Finals Gait Results',
-        description:
-          'Returns gait-specific results grouped by gait type for B-finals (competitionId 3). Each gait includes all riders with their individual judge scores (E1-E5) and average (E6). Perfect for displaying gait-specific graphics in vMix.',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-            example: 70617,
-          },
-        ],
-        responses: {
-          200: { description: 'Gangtegund results for B-úrslit' },
-          404: { description: 'No B-úrslit data available' },
-        },
-      },
-    },
-    '/leaderboard.csv': {
-      get: {
-        tags: ['Competition Data'],
-        summary: 'Get Leaderboard (CSV Format)',
-        description:
-          'Returns complete leaderboard in CSV format for compatibility with legacy systems or spreadsheet imports.',
+        tags: ['Event-Scoped'],
+        summary: 'B-urslit Gait Results for Event',
+        parameters: [eventIdPathParameter],
         responses: {
           200: {
-            description: 'Leaderboard CSV',
-            content: { 'text/csv': { schema: { type: 'string' } } },
+            description: 'Gangtegund results for B-urslit',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/GangtegundResult' },
+                },
+              },
+            },
           },
+          400: { description: 'Invalid event ID' },
+          404: { description: 'No B-urslit data available for this event' },
         },
       },
     },
     '/event/{eventId}/participants': {
       get: {
-        tags: ['Event Information'],
-        summary: 'Get Event Participants',
-        description:
-          'Returns complete list of all participants (riders and horses) registered for the event. Includes rider names, horse names, breeding numbers, clubs, colors, and competition disciplines.',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-            example: 70617,
-          },
-        ],
+        tags: ['Event-Scoped'],
+        summary: 'Event Participants',
+        parameters: [eventIdPathParameter],
         responses: {
           200: {
-            description: 'Participants data',
+            description: 'Participants payload',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  properties: {
-                    res: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          keppandi_numer: { type: 'integer' },
-                          knapi_nafn: { type: 'string' },
-                          hross_nafn: { type: 'string' },
-                          hross_fulltnafn: { type: 'string' },
-                          faedingarnumer: { type: 'string' },
-                          knapi_adildarfelag: { type: 'string' },
-                          eigandi_adildarfelag: { type: 'string' },
-                          litur: { type: 'string' },
-                          varaknapi_nafn: { type: 'string' },
-                          varapar: { type: 'string' },
-                          keppnisgreinar: { type: 'array' },
-                        },
-                      },
-                    },
-                  },
+                  additionalProperties: true,
                 },
               },
             },
           },
           400: { description: 'Invalid event ID' },
+          500: { description: 'Failed to fetch participants' },
         },
       },
     },
     '/event/{eventId}/tests': {
       get: {
-        tags: ['Event Information'],
-        summary: 'Get Event Competitions',
-        description:
-          'Returns all competitions/tests scheduled for the event. Includes competition names, class names, competition IDs (1=Preliminary, 2=A-Finals, 3=B-Finals, etc.), and starting list publication status.',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-            example: 70617,
-          },
-        ],
+        tags: ['Event-Scoped'],
+        summary: 'Event Tests/Competitions',
+        parameters: [eventIdPathParameter],
         responses: {
-          200: { description: 'Event tests data' },
+          200: {
+            description: 'Tests payload',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
           400: { description: 'Invalid event ID' },
+          500: { description: 'Failed to fetch event tests' },
+        },
+      },
+    },
+
+    '/leaderboard.csv': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Leaderboard (CSV)',
+        responses: {
+          200: {
+            description: 'Leaderboard as CSV text',
+            content: {
+              'text/csv': {
+                schema: { type: 'string' },
+              },
+            },
+          },
         },
       },
     },
@@ -553,29 +530,119 @@ Webhook endpoints require \`x-webhook-secret\` header for security.`,
         tags: ['Event Information'],
         summary: 'Search Events',
         description:
-          'Search for events by year, location, name, country code, or other criteria. Returns list of matching events with basic information.',
+          'Pass through supported Sportfengur search query parameters.',
         parameters: [
+          { name: 'numer', in: 'query', schema: { type: 'string' } },
+          { name: 'motsheiti', in: 'query', schema: { type: 'string' } },
+          { name: 'motsnumer', in: 'query', schema: { type: 'string' } },
+          { name: 'stadsetning', in: 'query', schema: { type: 'string' } },
+          { name: 'felag_audkenni', in: 'query', schema: { type: 'string' } },
           {
-            name: 'ar',
-            in: 'query',
-            schema: { type: 'integer' },
-            example: 2026,
-          },
-          {
-            name: 'land_kodi',
-            in: 'query',
-            schema: { type: 'string' },
-            example: 'IS',
-          },
-          {
-            name: 'motsheiti',
+            name: 'adildarfelag_numer',
             in: 'query',
             schema: { type: 'string' },
-            example: 'Landsmót',
           },
+          { name: 'land_kodi', in: 'query', schema: { type: 'string' } },
+          { name: 'ar', in: 'query', schema: { type: 'integer' } },
+          {
+            name: 'dagsetning_byrjar',
+            in: 'query',
+            schema: { type: 'string' },
+          },
+          { name: 'innanhusmot', in: 'query', schema: { type: 'string' } },
+          {
+            name: 'motstegund_numer',
+            in: 'query',
+            schema: { type: 'string' },
+          },
+          { name: 'stormot', in: 'query', schema: { type: 'string' } },
+          { name: 'world_ranking', in: 'query', schema: { type: 'string' } },
+          { name: 'skraning_stada', in: 'query', schema: { type: 'string' } },
         ],
         responses: {
-          200: { description: 'Search results' },
+          200: {
+            description: 'Event search payload',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          500: { description: 'Failed to search events' },
+        },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      webhookSecret: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-webhook-secret',
+        description: 'Required for webhook endpoints.',
+      },
+    },
+    schemas: {
+      HealthResponse: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', example: 'ok' },
+          lastWebhookAt: { type: 'string', format: 'date-time', nullable: true },
+          lastWebhookProcessedAt: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true,
+          },
+          lastError: { type: 'string', nullable: true },
+        },
+      },
+      LeaderboardEntry: {
+        type: 'object',
+        description:
+          'Leaderboard row with fixed fields and optional gait-specific score objects.',
+        properties: {
+          Nr: { type: 'string' },
+          Saeti: { type: 'string' },
+          Holl: { type: 'string' },
+          Hond: { type: 'string' },
+          Knapi: { type: 'string' },
+          Hestur: { type: 'string' },
+          E1: { type: 'string' },
+          E2: { type: 'string' },
+          E3: { type: 'string' },
+          E4: { type: 'string' },
+          E5: { type: 'string' },
+          E6: { type: 'string' },
+          timestamp: { type: 'string', format: 'date-time' },
+        },
+        additionalProperties: true,
+      },
+      GangtegundScore: {
+        type: 'object',
+        properties: {
+          nafn: { type: 'string' },
+          saeti: { type: 'string' },
+          E1: { type: 'string' },
+          E2: { type: 'string' },
+          E3: { type: 'string' },
+          E4: { type: 'string' },
+          E5: { type: 'string' },
+          E6: { type: 'string' },
+        },
+        additionalProperties: true,
+      },
+      GangtegundResult: {
+        type: 'object',
+        properties: {
+          gangtegundKey: { type: 'string' },
+          title: { type: 'string' },
+          einkunnir: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/GangtegundScore' },
+          },
         },
       },
     },

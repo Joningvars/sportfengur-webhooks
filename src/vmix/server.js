@@ -1,35 +1,20 @@
-/**
- * Data Server for vMix Integration
- *
- * Registers HTTP endpoints that serve in-memory competition state.
- * Endpoints return JSON and CSV formats with appropriate headers.
- *
- * Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 8.2, 8.3, 9.3
- */
 
 import {
   getCurrentState,
   getLeaderboardState,
   getCompetitionMetadata,
+  getCompetitionSpecificMetadata,
 } from './state.js';
 import { leaderboardToCsv } from './normalizer.js';
 import { apiGetWithRetry } from '../sportfengur.js';
 import { SPORTFENGUR_LOCALE } from '../config.js';
 import { log } from '../logger.js';
 
-/**
- * Extract gangtegund results from current state
- * @param {array} currentState - Current leaderboard state
- * @returns {array} Array of gangtegund results
- */
 function extractGangtegundResults(currentState) {
-  // Group results by gangtegund
   const gangtegundTypes = {};
 
   currentState.forEach((rider) => {
-    // Iterate through all properties to find gangtegund scores
     for (const [key, value] of Object.entries(rider)) {
-      // Skip base rider info and adal
       const excludeKeys = new Set([
         'Nr',
         'Saeti',
@@ -55,7 +40,6 @@ function extractGangtegundResults(currentState) {
       ]);
 
       if (!excludeKeys.has(key) && typeof value === 'object') {
-        // This is a gangtegund
         if (!gangtegundTypes[key]) {
           gangtegundTypes[key] = {
             gangtegundKey: key,
@@ -64,7 +48,6 @@ function extractGangtegundResults(currentState) {
           };
         }
 
-        // Add this rider's scores for this gangtegund
         const scores = {};
         for (const [scoreKey, scoreValue] of Object.entries(value)) {
           if (scoreKey !== '_title') {
@@ -81,16 +64,10 @@ function extractGangtegundResults(currentState) {
     }
   });
 
-  // Convert to array
   return Object.values(gangtegundTypes);
 }
 
-/**
- * Register vMix data endpoints on Express app
- * @param {Express} app - Express application instance
- */
 export function registerVmixRoutes(app) {
-  // GET /current - Returns all current data (no event filter)
   app.get('/current', (req, res) => {
     const currentState = getCurrentState();
 
@@ -101,17 +78,105 @@ export function registerVmixRoutes(app) {
     res.json(currentState);
   });
 
-  // GET /current/:eventId/results/a - Returns gangtegund results for A-úrslit (competitionId 2)
-  app.get('/current/:eventId/results/a', (req, res) => {
+  app.get('/forkeppni/sorted', (req, res) => {
+    const currentState = getLeaderboardState(1);
+    const sorted = [...currentState].sort((a, b) => {
+      const saetiA = Number(a.Saeti) || 999;
+      const saetiB = Number(b.Saeti) || 999;
+      return saetiA - saetiB;
+    });
+
+    log.server.endpoint('/forkeppni/sorted', sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/forkeppni', (req, res) => {
+    const currentState = getLeaderboardState(1);
+    const sorted = [...currentState].sort((a, b) => {
+      const nrA = Number(a.Nr) || 999;
+      const nrB = Number(b.Nr) || 999;
+      return nrA - nrB;
+    });
+
+    log.server.endpoint('/forkeppni', sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/a/sorted', (req, res) => {
+    const currentState = getLeaderboardState(2);
+    const sorted = [...currentState].sort((a, b) => {
+      const saetiA = Number(a.Saeti) || 999;
+      const saetiB = Number(b.Saeti) || 999;
+      return saetiA - saetiB;
+    });
+
+    log.server.endpoint('/a/sorted', sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/a', (req, res) => {
+    const currentState = getLeaderboardState(2);
+    const sorted = [...currentState].sort((a, b) => {
+      const nrA = Number(a.Nr) || 999;
+      const nrB = Number(b.Nr) || 999;
+      return nrA - nrB;
+    });
+
+    log.server.endpoint('/a', sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/b/sorted', (req, res) => {
+    const currentState = getLeaderboardState(3);
+    const sorted = [...currentState].sort((a, b) => {
+      const saetiA = Number(a.Saeti) || 999;
+      const saetiB = Number(b.Saeti) || 999;
+      return saetiA - saetiB;
+    });
+
+    log.server.endpoint('/b/sorted', sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/b', (req, res) => {
+    const currentState = getLeaderboardState(3);
+    const sorted = [...currentState].sort((a, b) => {
+      const nrA = Number(a.Nr) || 999;
+      const nrB = Number(b.Nr) || 999;
+      return nrA - nrB;
+    });
+
+    log.server.endpoint('/b', sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/:eventId/results/a', (req, res) => {
     const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionMetadata();
+    const metadata = getCompetitionSpecificMetadata(2);
 
     if (isNaN(requestedEventId)) {
       return res.status(400).json({ error: 'Invalid event ID' });
     }
 
-    // Check if current event matches requested event
-    if (metadata.eventId !== requestedEventId) {
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
       return res.status(404).json({
         error: 'No data available for this event',
         requestedEventId,
@@ -119,8 +184,7 @@ export function registerVmixRoutes(app) {
       });
     }
 
-    // Check if current competition is A-úrslit (competitionId 2)
-    if (metadata.competitionId !== 2) {
+    if (metadata.competitionId !== null && metadata.competitionId !== 2) {
       return res.status(404).json({
         error: 'No A-úrslit data available',
         currentCompetitionId: metadata.competitionId,
@@ -135,17 +199,15 @@ export function registerVmixRoutes(app) {
     res.json(resultsArray);
   });
 
-  // GET /current/:eventId/results/b - Returns gangtegund results for B-úrslit (competitionId 3)
-  app.get('/current/:eventId/results/b', (req, res) => {
+  app.get('/:eventId/results/b', (req, res) => {
     const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionMetadata();
+    const metadata = getCompetitionSpecificMetadata(3);
 
     if (isNaN(requestedEventId)) {
       return res.status(400).json({ error: 'Invalid event ID' });
     }
 
-    // Check if current event matches requested event
-    if (metadata.eventId !== requestedEventId) {
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
       return res.status(404).json({
         error: 'No data available for this event',
         requestedEventId,
@@ -153,8 +215,7 @@ export function registerVmixRoutes(app) {
       });
     }
 
-    // Check if current competition is B-úrslit (competitionId 3)
-    if (metadata.competitionId !== 3) {
+    if (metadata.competitionId !== null && metadata.competitionId !== 3) {
       return res.status(404).json({
         error: 'No B-úrslit data available',
         currentCompetitionId: metadata.competitionId,
@@ -169,7 +230,186 @@ export function registerVmixRoutes(app) {
     res.json(resultsArray);
   });
 
-  // GET /current/:eventId - Returns players only if eventId matches
+  app.get('/:eventId/forkeppni/sorted', (req, res) => {
+    const requestedEventId = Number(req.params.eventId);
+    const metadata = getCompetitionSpecificMetadata(1);
+
+    if (isNaN(requestedEventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+      return res.status(404).json({
+        error: 'No Forkeppni data available for this event',
+        requestedEventId,
+        currentEventId: metadata.eventId,
+      });
+    }
+
+    const currentState = getLeaderboardState(1);
+    const sorted = [...currentState].sort((a, b) => {
+      const saetiA = Number(a.Saeti) || 999;
+      const saetiB = Number(b.Saeti) || 999;
+      return saetiA - saetiB;
+    });
+
+    log.server.endpoint(`/${requestedEventId}/forkeppni/sorted`, sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/:eventId/forkeppni', (req, res) => {
+    const requestedEventId = Number(req.params.eventId);
+    const metadata = getCompetitionSpecificMetadata(1);
+
+    if (isNaN(requestedEventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+      return res.status(404).json({
+        error: 'No Forkeppni data available for this event',
+        requestedEventId,
+        currentEventId: metadata.eventId,
+      });
+    }
+
+    const currentState = getLeaderboardState(1);
+    const sorted = [...currentState].sort((a, b) => {
+      const nrA = Number(a.Nr) || 999;
+      const nrB = Number(b.Nr) || 999;
+      return nrA - nrB;
+    });
+
+    log.server.endpoint(`/${requestedEventId}/forkeppni`, sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/:eventId/a/sorted', (req, res) => {
+    const requestedEventId = Number(req.params.eventId);
+    const metadata = getCompetitionSpecificMetadata(2);
+
+    if (isNaN(requestedEventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+      return res.status(404).json({
+        error: 'No A-úrslit data available for this event',
+        requestedEventId,
+        currentEventId: metadata.eventId,
+      });
+    }
+
+    const currentState = getLeaderboardState(2);
+    const sorted = [...currentState].sort((a, b) => {
+      const saetiA = Number(a.Saeti) || 999;
+      const saetiB = Number(b.Saeti) || 999;
+      return saetiA - saetiB;
+    });
+
+    log.server.endpoint(`/${requestedEventId}/a/sorted`, sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/:eventId/a', (req, res) => {
+    const requestedEventId = Number(req.params.eventId);
+    const metadata = getCompetitionSpecificMetadata(2);
+
+    if (isNaN(requestedEventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+      return res.status(404).json({
+        error: 'No A-úrslit data available for this event',
+        requestedEventId,
+        currentEventId: metadata.eventId,
+      });
+    }
+
+    const currentState = getLeaderboardState(2);
+    const sorted = [...currentState].sort((a, b) => {
+      const nrA = Number(a.Nr) || 999;
+      const nrB = Number(b.Nr) || 999;
+      return nrA - nrB;
+    });
+
+    log.server.endpoint(`/${requestedEventId}/a`, sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/:eventId/b/sorted', (req, res) => {
+    const requestedEventId = Number(req.params.eventId);
+    const metadata = getCompetitionSpecificMetadata(3);
+
+    if (isNaN(requestedEventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+      return res.status(404).json({
+        error: 'No B-úrslit data available for this event',
+        requestedEventId,
+        currentEventId: metadata.eventId,
+      });
+    }
+
+    const currentState = getLeaderboardState(3);
+    const sorted = [...currentState].sort((a, b) => {
+      const saetiA = Number(a.Saeti) || 999;
+      const saetiB = Number(b.Saeti) || 999;
+      return saetiA - saetiB;
+    });
+
+    log.server.endpoint(`/${requestedEventId}/b/sorted`, sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/:eventId/b', (req, res) => {
+    const requestedEventId = Number(req.params.eventId);
+    const metadata = getCompetitionSpecificMetadata(3);
+
+    if (isNaN(requestedEventId)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+      return res.status(404).json({
+        error: 'No B-úrslit data available for this event',
+        requestedEventId,
+        currentEventId: metadata.eventId,
+      });
+    }
+
+    const currentState = getLeaderboardState(3);
+    const sorted = [...currentState].sort((a, b) => {
+      const nrA = Number(a.Nr) || 999;
+      const nrB = Number(b.Nr) || 999;
+      return nrA - nrB;
+    });
+
+    log.server.endpoint(`/${requestedEventId}/b`, sorted.length);
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
   app.get('/current/:eventId', (req, res) => {
     const requestedEventId = Number(req.params.eventId);
     const metadata = getCompetitionMetadata();
@@ -178,8 +418,7 @@ export function registerVmixRoutes(app) {
       return res.status(400).json({ error: 'Invalid event ID' });
     }
 
-    // Check if the current state matches the requested eventId
-    if (metadata.eventId !== requestedEventId) {
+    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
       return res.status(404).json({
         error: 'No data available for this event',
         requestedEventId,
@@ -193,7 +432,6 @@ export function registerVmixRoutes(app) {
     res.json(currentState);
   });
 
-  // GET /leaderboard.csv - Returns leaderboard as CSV
   app.get('/leaderboard.csv', (req, res) => {
     const leaderboardState = getLeaderboardState();
     const csv = leaderboardToCsv(leaderboardState);
@@ -203,7 +441,6 @@ export function registerVmixRoutes(app) {
     res.send(csv);
   });
 
-  // GET /event/:eventId/participants - Returns participants for an event
   app.get('/event/:eventId/participants', async (req, res) => {
     try {
       const eventId = req.params.eventId;
@@ -216,7 +453,7 @@ export function registerVmixRoutes(app) {
         `/${SPORTFENGUR_LOCALE}/participants/${eventId}`,
       );
 
-      res.setHeader('Cache-Control', 'public, max-age=300'); // Cache for 5 minutes
+      res.setHeader('Cache-Control', 'public, max-age=300');
       res.setHeader('Content-Type', 'application/json');
       res.json(data);
     } catch (error) {
@@ -228,7 +465,6 @@ export function registerVmixRoutes(app) {
     }
   });
 
-  // GET /event/:eventId/tests - Returns tests/competitions for an event
   app.get('/event/:eventId/tests', async (req, res) => {
     try {
       const eventId = req.params.eventId;
@@ -241,7 +477,7 @@ export function registerVmixRoutes(app) {
         `/${SPORTFENGUR_LOCALE}/event/tests/${eventId}`,
       );
 
-      res.setHeader('Cache-Control', 'public, max-age=300'); // Cache for 5 minutes
+      res.setHeader('Cache-Control', 'public, max-age=300');
       res.setHeader('Content-Type', 'application/json');
       res.json(data);
     } catch (error) {
@@ -253,13 +489,10 @@ export function registerVmixRoutes(app) {
     }
   });
 
-  // GET /events/search - Search for events from Sportfengur
   app.get('/events/search', async (req, res) => {
     try {
-      // Build query string from request parameters
       const queryParams = new URLSearchParams();
 
-      // Add all supported query parameters if they exist
       const allowedParams = [
         'numer',
         'motsheiti',
@@ -288,7 +521,7 @@ export function registerVmixRoutes(app) {
 
       const data = await apiGetWithRetry(path);
 
-      res.setHeader('Cache-Control', 'public, max-age=300'); // Cache for 5 minutes
+      res.setHeader('Cache-Control', 'public, max-age=300');
       res.setHeader('Content-Type', 'application/json');
       res.json(data);
     } catch (error) {

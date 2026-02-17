@@ -4,8 +4,6 @@ dotenv.config();
 
 export const WEBHOOK_SECRET = process.env.SPORTFENGUR_WEBHOOK_SECRET || '';
 export const WEBHOOK_SECRET_REQUIRED = true;
-export const EXCEL_PATH = process.env.EXCEL_PATH || './raslistar.xlsx';
-export const EXCEL_OUTPUT_PATH = process.env.EXCEL_OUTPUT_PATH || EXCEL_PATH;
 export const SPORTFENGUR_BASE_URL =
   process.env.SPORTFENGUR_BASE_URL || 'https://sportfengur.com/api/v1';
 export const SPORTFENGUR_LOCALE = process.env.SPORTFENGUR_LOCALE || 'is';

@@ -1,21 +1,12 @@
 import {
   WEBHOOK_SECRET,
-  WEBHOOK_SECRET_REQUIRED,
   SPORTFENGUR_LOCALE,
   DEDUPE_TTL_MS,
-  DEBUG_LOGS,
   EVENT_ID_FILTER,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
-// writing to a single output file; keep sheet names for competitions
-import {
-  appendWebhookRow,
-  updateStartingListSheet,
-  updateResultsScores,
-  writeDataSheet,
-  removeSheet,
-} from './excel.js';
 import { scheduleRefresh, setCompetitionContext } from './vmix/refresh.js';
+import { clearStartingListCache } from './vmix/vendor.js';
 import { log } from './logger.js';
 
 const EVENT_DEFINITIONS = {
@@ -28,59 +19,7 @@ const EVENT_DEFINITIONS = {
   event_keppnisgreinar: ['eventId'],
 };
 
-const COMPETITION_NAME_BY_ID = {
-  1: 'Forkeppni',
-  2: 'A-úrslit',
-  3: 'B-úrslit',
-  4: '1. sprettur',
-  5: '2. sprettur',
-  6: '3. sprettur',
-  7: '4. sprettur',
-  8: '5. sprettur',
-  9: '6. sprettur',
-  10: 'Sérstök forkeppni',
-  11: 'Milliriðill',
-  12: 'C úrslit',
-};
-
-function getCompetitionName(competitionId) {
-  const id = Number(competitionId);
-  if (!Number.isFinite(id)) return null;
-  return COMPETITION_NAME_BY_ID[id] || null;
-}
-
-function getCompetitionSheetName(competitionId) {
-  const name = getCompetitionName(competitionId);
-  const id = Number(competitionId);
-  if (name) {
-    return name;
-  }
-  const base = `Keppni ${id}`;
-  return base.length > 31 ? base.slice(0, 31) : base;
-}
-
-function sanitizeFileName(name) {
-  return name
-    .replace(/[<>:"/\\|?*]/g, '')
-    .replace(/[áàâä]/gi, 'a')
-    .replace(/[éèêë]/gi, 'e')
-    .replace(/[íìîï]/gi, 'i')
-    .replace(/[óòôö]/gi, 'o')
-    .replace(/[úùûü]/gi, 'u')
-    .replace(/[ýÿ]/gi, 'y')
-    .replace(/[ð]/gi, 'd')
-    .replace(/[þ]/gi, 'th')
-    .replace(/[æ]/gi, 'ae')
-    .replace(/[ö]/gi, 'o')
-    .trim();
-}
-
-function getCompetitionFilePath(competitionId) {
-  return sanitizeFileName(getCompetitionSheetName(competitionId));
-}
-
 const dedupeCache = new Map();
-const startingListCache = new Map();
 const competitionIdByClassId = new Map();
 let lastWebhookAt = null;
 let lastWebhookProcessedAt = null;
@@ -170,153 +109,6 @@ async function resolveCompetitionId(payload) {
   return null;
 }
 
-async function handleEventRaslisti(payload) {
-  const classId = payload.classId;
-  const competitionId = await resolveCompetitionId(payload);
-  if (competitionId == null) {
-    throw new Error('Missing competitionId for startinglist.');
-  }
-  const competitionName = getCompetitionName(competitionId);
-  const sheetName = getCompetitionSheetName(competitionId);
-  const legacySheetName = getCompetitionName(competitionId)
-    ? `${getCompetitionName(competitionId)} (${competitionId})`
-    : null;
-  const outputPath = null;
-  const start = Date.now();
-
-  log.excel.fetching(
-    competitionName || `Competition ${competitionId}`,
-    classId,
-    competitionId,
-  );
-
-  const data = await apiGetWithRetry(
-    `/${SPORTFENGUR_LOCALE}/startinglist/${classId}/${competitionId}`,
-  );
-  const startingList = Array.isArray(data?.raslisti) ? data.raslisti : [];
-
-  log.excel.writing();
-  await updateStartingListSheet(
-    startingList,
-    sheetName,
-    legacySheetName ? [legacySheetName] : [],
-    outputPath,
-  );
-  log.excel.written();
-  log.excel.completed(startingList.length, Date.now() - start);
-}
-
-async function handleEventKeppendalistiBreyta(payload) {
-  const data = await apiGetWithRetry(
-    `/${SPORTFENGUR_LOCALE}/participants/${payload.eventId}`,
-  );
-  const rows = (data?.res || []).map((item) => ({
-    timestamp: new Date().toISOString(),
-    eventId: payload.eventId,
-    keppandi_numer: item.keppandi_numer ?? '',
-    knapi_nafn: item.knapi_nafn ?? '',
-    hross_nafn: item.hross_nafn ?? '',
-    hross_fulltnafn: item.hross_fulltnafn ?? '',
-    faedingarnumer: item.faedingarnumer ?? '',
-    knapi_adildarfelag: item.knapi_adildarfelag ?? '',
-    eigandi_adildarfelag: item.eigandi_adildarfelag ?? '',
-    litur: item.litur ?? '',
-    varaknapi_nafn: item.varaknapi_nafn ?? '',
-    varapar: item.varapar ?? '',
-    keppnisgreinar: JSON.stringify(item.keppnisgreinar ?? []),
-  }));
-  await writeDataSheet(
-    'keppendalisti',
-    [
-      'timestamp',
-      'eventId',
-      'keppandi_numer',
-      'knapi_nafn',
-      'hross_nafn',
-      'hross_fulltnafn',
-      'faedingarnumer',
-      'knapi_adildarfelag',
-      'eigandi_adildarfelag',
-      'litur',
-      'varaknapi_nafn',
-      'varapar',
-      'keppnisgreinar',
-    ],
-    rows,
-  );
-}
-
-async function handleEventKeppnisgreinar(payload) {
-  const data = await apiGetWithRetry(
-    `/${SPORTFENGUR_LOCALE}/event/tests/${payload.eventId}`,
-  );
-  const rows = (data?.res || []).map((item) => ({
-    timestamp: new Date().toISOString(),
-    eventId: payload.eventId,
-    mot_numer: item.mot_numer ?? '',
-    flokkur_nafn: item.flokkur_nafn ?? '',
-    flokkar_numer: item.flokkar_numer ?? '',
-    keppnisgrein: item.keppnisgrein ?? '',
-    keppni: item.keppni ?? '',
-    keppni_numer: item.keppni_numer ?? '',
-    keppni_rod: item.keppni_rod ?? '',
-    rod: item.rod ?? '',
-    raslisti_birtur: item.raslisti_birtur ?? '',
-  }));
-  await writeDataSheet(
-    'keppnisgreinar',
-    [
-      'timestamp',
-      'eventId',
-      'mot_numer',
-      'flokkur_nafn',
-      'flokkar_numer',
-      'keppnisgrein',
-      'keppni',
-      'keppni_numer',
-      'keppni_rod',
-      'rod',
-      'raslisti_birtur',
-    ],
-    rows,
-  );
-}
-
-async function handleEventEinkunnSaeti(payload) {
-  const classId = payload.classId;
-  const competitionId = await resolveCompetitionId(payload);
-  if (competitionId == null) {
-    throw new Error('Missing competitionId for results.');
-  }
-  const competitionName = getCompetitionName(competitionId);
-  const sheetName = getCompetitionSheetName(competitionId);
-  const legacySheetName = getCompetitionName(competitionId)
-    ? `${getCompetitionName(competitionId)} (${competitionId})`
-    : null;
-  const outputPath = null;
-  const start = Date.now();
-
-  log.excel.fetching(
-    competitionName || `Competition ${competitionId}`,
-    classId,
-    competitionId,
-  );
-
-  const data = await apiGetWithRetry(
-    `/${SPORTFENGUR_LOCALE}/test/results/${classId}/${competitionId}`,
-  );
-
-  log.excel.writing();
-  await updateResultsScores(
-    data?.einkunnir || [],
-    sheetName,
-    legacySheetName ? [legacySheetName] : [],
-    outputPath,
-  );
-  log.excel.written();
-  log.excel.completed((data?.einkunnir || []).length, Date.now() - start);
-}
-
 async function handleWebhook(req, res, eventName) {
   if (!requireWebhookSecret(req, res)) {
     return;
@@ -350,36 +142,13 @@ async function handleWebhook(req, res, eventName) {
       return;
     }
 
-    await appendWebhookRow(eventName, payload);
-
-    // Resolve competitionId if needed
     let resolvedCompetitionId = payload.competitionId;
 
-    if (
-      eventName === 'event_raslisti_birtur' ||
-      eventName === 'event_naesti_sprettur'
-    ) {
-      await handleEventRaslisti(payload);
-      // Resolve competitionId for vMix refresh
-      if (!resolvedCompetitionId && payload.classId) {
-        resolvedCompetitionId = await resolveCompetitionId(payload);
-      }
-    } else if (eventName === 'event_keppendalisti_breyta') {
-      await handleEventKeppendalistiBreyta(payload);
-    } else if (eventName === 'event_keppnisgreinar') {
-      await handleEventKeppnisgreinar(payload);
-    } else if (eventName === 'event_einkunn_saeti') {
-      await handleEventEinkunnSaeti(payload);
-      // Resolve competitionId for vMix refresh
-      if (!resolvedCompetitionId && payload.classId) {
-        resolvedCompetitionId = await resolveCompetitionId(payload);
-      }
+    if (!resolvedCompetitionId && payload.classId) {
+      resolvedCompetitionId = await resolveCompetitionId(payload);
     }
 
-    // Trigger vMix refresh asynchronously (non-blocking)
-    // Set competition context if available
     if (payload.eventId && payload.classId && resolvedCompetitionId) {
-      // Force refresh for starting list webhooks, use cache for results webhooks
       const forceRefresh =
         eventName === 'event_raslisti_birtur' ||
         eventName === 'event_naesti_sprettur';
@@ -421,13 +190,6 @@ export function registerWebhookRoutes(app) {
         res.status(500).send('Internal Server Error');
       });
     });
-
-    app.post(`/webhooks/${eventName}`, (req, res) => {
-      handleWebhook(req, res, eventName).catch((error) => {
-        console.error(`Webhook ${eventName} failed:`, error);
-        res.status(500).send('Internal Server Error');
-      });
-    });
   });
 }
 
@@ -462,7 +224,7 @@ export function registerCurrentRoutes(app) {
 
 export function registerCacheRoutes(app) {
   app.post('/cache/raslisti/clear', (req, res) => {
-    startingListCache.clear();
+    clearStartingListCache();
     res.send('Cache hreinsað');
   });
 }

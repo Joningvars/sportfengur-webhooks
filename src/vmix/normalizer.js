@@ -1,11 +1,4 @@
-/**
- * Data normalization functions for vMix integration
- * Transforms vendor API responses into stable vMix-friendly schemas
- */
 
-/**
- * Calculate age from faedingarnumer (birth ID)
- */
 function calculateAldur(faedingarnumer) {
   if (!faedingarnumer || typeof faedingarnumer !== 'string') return '';
   const match = faedingarnumer.match(/(\d{4})/);
@@ -21,31 +14,19 @@ function calculateAldur(faedingarnumer) {
   return new Date().getFullYear() - year;
 }
 
-/**
- * Format score to 2 decimal places without rounding and return as string
- * Handles both comma and dot decimal separators
- */
 function roundScore(value) {
   if (value === null || value === undefined || value === '') return '';
 
-  // Convert comma decimal separator to dot
   let strValue = String(value).replace(',', '.');
 
   const num = Number(strValue);
   if (!Number.isFinite(num)) return '';
 
-  // Truncate to 2 decimal places without rounding
   const truncated = Math.floor(num * 100) / 100;
 
-  // Format and remove trailing zeros
   return truncated.toFixed(2).replace(/\.?0+$/, '');
 }
 
-/**
- * Sanitize gait type name for use as JSON key
- * @param {string} gaitType - Raw gait type from API
- * @returns {string} Sanitized key
- */
 function sanitizeGaitKey(gaitType) {
   return String(gaitType)
     .toLowerCase()
@@ -61,12 +42,6 @@ function sanitizeGaitKey(gaitType) {
     .replace(/[æ]/g, 'ae');
 }
 
-/**
- * Extract gait-specific scores from judge data
- * Returns object with individual judge scores for each gait type as nested objects
- * @param {array} judges - Array of judge objects with sundurlidun_einkunna
- * @returns {object} Object with adal and dynamic gait type objects
- */
 function extractGaitScores(judges) {
   const gaitScores = {
     adal: {},
@@ -76,7 +51,6 @@ function extractGaitScores(judges) {
     return gaitScores;
   }
 
-  // Extract main judge scores (adal) - E1 through E5
   judges.slice(0, 5).forEach((judge, index) => {
     const mainScore = judge?.domari_adaleinkunn;
     if (mainScore !== null && mainScore !== undefined) {
@@ -84,14 +58,12 @@ function extractGaitScores(judges) {
     }
   });
 
-  // Ensure all E1-E5 exist in adal (fill with empty strings if missing)
   for (let i = 1; i <= 5; i++) {
     if (!gaitScores.adal[`E${i}`]) {
       gaitScores.adal[`E${i}`] = '';
     }
   }
 
-  // Add E6 (average) to adal
   const adalScores = Object.values(gaitScores.adal).filter((s) => s !== '');
   if (adalScores.length > 0) {
     const sum = adalScores.reduce((a, b) => a + Number(b), 0);
@@ -101,9 +73,8 @@ function extractGaitScores(judges) {
     gaitScores.adal.E6 = '';
   }
 
-  // Process each judge for gait-specific scores
   const gaitMaps = {};
-  const gaitTitles = {}; // Store original gait type names
+  const gaitTitles = {};
 
   judges.slice(0, 5).forEach((judge, judgeIndex) => {
     const breakdown = judge?.sundurlidun_einkunna;
@@ -115,26 +86,23 @@ function extractGaitScores(judges) {
 
       if (!gaitType || score === null || score === undefined) continue;
 
-      // Use the full gait type name as key (sanitized for JSON keys)
       const gaitKey = sanitizeGaitKey(gaitType);
 
       if (!gaitMaps[gaitKey]) {
         gaitMaps[gaitKey] = new Map();
-        gaitTitles[gaitKey] = gaitType; // Store original title
+        gaitTitles[gaitKey] = gaitType;
       }
       gaitMaps[gaitKey].set(judgeIndex, roundScore(score));
     }
   });
 
-  // Convert maps to objects and add E6 (average)
   Object.keys(gaitMaps).forEach((gaitKey) => {
     const map = gaitMaps[gaitKey];
     const scores = [];
     gaitScores[gaitKey] = {
-      _title: gaitTitles[gaitKey], // Store original title with underscore prefix
+      _title: gaitTitles[gaitKey],
     };
 
-    // Add E1-E5
     for (let i = 0; i < 5; i++) {
       if (map.has(i)) {
         gaitScores[gaitKey][`E${i + 1}`] = map.get(i);
@@ -144,14 +112,12 @@ function extractGaitScores(judges) {
       }
     }
 
-    // Add E6 (average)
     if (scores.length > 0) {
       const sum = scores.reduce((a, b) => a + b, 0);
       const avg = sum / scores.length;
       gaitScores[gaitKey].E6 = roundScore(avg);
     } else {
       gaitScores[gaitKey].E6 = '';
-      // Remove this gait type if it has no scores
       delete gaitScores[gaitKey];
     }
   });
@@ -159,13 +125,6 @@ function extractGaitScores(judges) {
   return gaitScores;
 }
 
-/**
- * Normalizes current rider data from vendor API response
- * @param {object} apiResponse - Raw vendor API response for current rider
- * @returns {object} Normalized current rider data with all competition fields
- *
- * Validates: Requirements 5.1, 5.5
- */
 export function normalizeCurrent(apiResponse) {
   if (!apiResponse || typeof apiResponse !== 'object') {
     return {
@@ -213,7 +172,6 @@ export function normalizeCurrent(apiResponse) {
       '',
   );
 
-  // Extract judge scores (E1-E5)
   const judges = Array.isArray(apiResponse.einkunnir_domara)
     ? apiResponse.einkunnir_domara
     : [];
@@ -221,7 +179,6 @@ export function normalizeCurrent(apiResponse) {
     .slice(0, 5)
     .map((j) => roundScore(j?.domari_adaleinkunn));
 
-  // Extract gait-specific scores
   const gaitScores = extractGaitScores(judges);
 
   return {
@@ -252,20 +209,13 @@ export function normalizeCurrent(apiResponse) {
   };
 }
 
-/**
- * Normalizes leaderboard data from vendor API response
- * @param {array} apiResponse - Raw vendor API response array for leaderboard
- * @returns {array} Normalized leaderboard entries with all competition fields
- *
- * Validates: Requirements 5.2, 5.5
- */
 export function normalizeLeaderboard(apiResponse) {
   if (!Array.isArray(apiResponse)) {
     return [];
   }
 
   return apiResponse
-    .filter((entry) => entry && entry.keppandi_medaleinkunn != null)
+    .filter((entry) => entry != null)
     .map((entry) => {
       const riderName = String(
         entry.knapi_fullt_nafn ||
@@ -280,7 +230,6 @@ export function normalizeLeaderboard(apiResponse) {
           '',
       );
 
-      // Extract judge scores (E1-E5)
       const judges = Array.isArray(entry.einkunnir_domara)
         ? entry.einkunnir_domara
         : [];
@@ -288,7 +237,6 @@ export function normalizeLeaderboard(apiResponse) {
         .slice(0, 5)
         .map((j) => roundScore(j?.domari_adaleinkunn));
 
-      // Extract gait-specific scores
       const gaitScores = extractGaitScores(judges);
 
       return {
@@ -324,13 +272,6 @@ export function normalizeLeaderboard(apiResponse) {
     });
 }
 
-/**
- * Converts normalized leaderboard array to CSV string
- * @param {array} leaderboard - Normalized leaderboard array
- * @returns {string} CSV formatted leaderboard with headers
- *
- * Validates: Requirements 5.3, 5.4
- */
 export function leaderboardToCsv(leaderboard) {
   const headers =
     'Nr,Saeti,Holl,Hond,Knapi,LiturRas,FelagKnapa,Hestur,Litur,Aldur,FelagEiganda,Lid,NafnBIG,E1,E2,E3,E4,E5,E6,adalE1,adalE2,adalE3,adalE4,adalE5,adalE6,toltE1,toltE2,toltE3,toltE4,toltE5,toltE6,brokkE1,brokkE2,brokkE3,brokkE4,brokkE5,brokkE6,skeðE1,skeðE2,skeðE3,skeðE4,skeðE5,skeðE6,stökkE1,stökkE2,stökkE3,stökkE4,stökkE5,stökkE6,hægtE1,hægtE2,hægtE3,hægtE4,hægtE5,hægtE6';
@@ -402,15 +343,9 @@ export function leaderboardToCsv(leaderboard) {
   return headers + '\n' + rows.join('\n') + '\n';
 }
 
-/**
- * Escapes a CSV field if it contains special characters
- * @param {string} field - Field value to escape
- * @returns {string} Escaped field value
- */
 function escapeCsvField(field) {
   const str = String(field);
 
-  // If field contains comma, quote, or newline, wrap in quotes and escape quotes
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }

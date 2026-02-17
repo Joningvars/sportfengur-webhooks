@@ -3,21 +3,14 @@ SportFengur Webhooks - Quick Setup (Windows)
 1) Copy .env.example -> .env and fill in:
    - EIDFAXI_USERNAME
    - EIDFAXI_PASSWORD
-   - EXCEL_PATH (template/input)
-   - EXCEL_OUTPUT_PATH (live output)
    - PORT (default 3000)
    - (optional) WEBHOOK_SECRET_REQUIRED=true + SPORTFENGUR_WEBHOOK_SECRET
 
 2) Run the app:
-   sportfengur-webhooks.exe
+   npm install
+   npm start
 
-3) Start ngrok:
-   3a) Install ngrok and add authtoken:
-       ngrok.exe config add-authtoken YOUR_AUTHTOKEN
-   3b) Reserve ngrok-branded domain in dashboard (e.g. yourname.ngrok.app)
-   ngrok.exe http --url=yourname.ngrok.app 3000
-
-4) Verify:
+3) Verify:
    http://localhost:3000/health
 
 Webhook header (if enabled):

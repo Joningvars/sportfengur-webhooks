@@ -1,83 +1,49 @@
 # Uppsetning (Windows) — skref fyrir skref
 
-Þetta forrit tekur á móti webhooks frá SportFengur, sækir nýjustu gögn og uppfærir XLSX skrár á staðnum.
+Þetta forrit er REST webhook server sem tekur á móti webhooks frá SportFengur og birtir gögn á API endapunktum.
 
 ## 1) Stillingar
 - Afrita `.env.example` → `.env`
 - Fylla inn:
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
-  - `EXCEL_PATH` (template/input, t.d. `./data/raslistar.xlsx`)
-  - `EXCEL_OUTPUT_PATH` (output skrá, t.d. `./data/raslistar_live.xlsx`)
   - `EVENT_ID` (leyfilegt `eventId`, t.d. `70617`)
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
 
 ## 2) Keyra forritið
-### A) Með .exe (ráðlagt)
-```bat
-dist\sportfengur-webhooks.exe
-```
-
-### B) Með Node (ef þú ert með Node)
 ```bat
 npm install
 npm start
 ```
 
-## 3) Ngrok (stöðug slóð, engin port forwarding)
-Ngrok Hobbyist plan er nóg fyrir stöðuga slóð (ngrok-branded domain).
-
-1) Setja upp ngrok og innskrá:
-```bat
-ngrok.exe config add-authtoken YOUR_AUTHTOKEN
-```
-
-2) Búa til ngrok-branded domain í dashboard (t.d. `yourname.ngrok.app`)
-
-3) Ræsa tunnel með slóð:
-```bat
-ngrok.exe http --url=yourname.ngrok.app 3000
-```
-
-4) (Valfrjálst) Keyra ngrok sem Windows þjónustu eða í Startup.
-
-## 4) Heilsutékka
+## 3) Heilsutékka
 ```text
 http://localhost:3000/health
 ```
 
-## 5) Swagger skjölun
+## 4) Swagger skjölun
 ```text
 http://localhost:3000/docs
 ```
 
-## 6) wMix /current JSON
+## 5) wMix /current JSON
 - `POST /current` setur inn nýjustu JSON gögn
 - `GET /current` skilar síðustu JSON gögnunum
 
-## 7) Auto-start (valfrjálst)
-Búið til shortcut á `dist\sportfengur-webhooks.exe` og setjið í:
-```text
-%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-```
-
-## 8) Handvirk einkunnaköll (valfrjálst)
+## 6) Handvirk einkunnaköll (valfrjálst)
 Skripturnar eru í `release\`:
 ```text
 release\call_einkunn_forkeppni.bat
 release\call_einkunn_a_urslit.bat
 release\call_einkunn_b_urslit.bat
 ```
-Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `http://eidfaxi.ngrok.app/...`).
+Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `https://api.your-domain.com/...`).
 
 ## Athugasemdir
-- Engin port forwarding þarf ef ngrok er notað.
 - Loggar fara á stdout (keyrið í terminal eða setjið upp Scheduled Task sem skrifar logga í skrá).
-- XLSX skrif eru raðað og skrifuð atomískt til að minnka hættu á skemmdum.
-- Allar keppnir eru skrifaðar í **eina XLSX skrá** (separate sheets: `Forkeppni`, `A-úrslit`, `B-úrslit`, o.s.frv.).
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
-- Ef `EVENT_ID` er stillt, þá eru aðeins webhook events með þessu `eventId` unnin/skrifuð.
+- Ef `EVENT_ID` er stillt, þá eru aðeins webhook events með þessu `eventId` unnin.
 
 ## Gangtegundir (mapping)
 Eftirfarandi gangtegundir eru studdar og skrifast í viðeigandi dálka:
@@ -91,9 +57,9 @@ Eftirfarandi gangtegundir eru studdar og skrifast í viðeigandi dálka:
 
 ## Webhook slóðir
 ```text
-https://eidfaxi.ngrok.app/event_raslisti_birtur
-https://eidfaxi.ngrok.app/event_naesti_sprettur
-https://eidfaxi.ngrok.app/event_keppendalisti_breyta
-https://eidfaxi.ngrok.app/event_keppnisgreinar
-https://eidfaxi.ngrok.app/event_einkunn_saeti
+https://api.your-domain.com/event_raslisti_birtur
+https://api.your-domain.com/event_naesti_sprettur
+https://api.your-domain.com/event_keppendalisti_breyta
+https://api.your-domain.com/event_keppnisgreinar
+https://api.your-domain.com/event_einkunn_saeti
 ```
