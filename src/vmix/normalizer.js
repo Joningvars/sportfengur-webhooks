@@ -273,74 +273,149 @@ export function normalizeLeaderboard(apiResponse) {
 }
 
 export function leaderboardToCsv(leaderboard) {
-  const headers =
-    'Nr,Saeti,Holl,Hond,Knapi,LiturRas,FelagKnapa,Hestur,Litur,Aldur,FelagEiganda,Lid,NafnBIG,E1,E2,E3,E4,E5,E6,adalE1,adalE2,adalE3,adalE4,adalE5,adalE6,toltE1,toltE2,toltE3,toltE4,toltE5,toltE6,brokkE1,brokkE2,brokkE3,brokkE4,brokkE5,brokkE6,skeðE1,skeðE2,skeðE3,skeðE4,skeðE5,skeðE6,stökkE1,stökkE2,stökkE3,stökkE4,stökkE5,stökkE6,hægtE1,hægtE2,hægtE3,hægtE4,hægtE5,hægtE6';
+  const baseHeaders = [
+    'Nr',
+    'Saeti',
+    'Holl',
+    'Hond',
+    'Knapi',
+    'LiturRas',
+    'FelagKnapa',
+    'Hestur',
+    'Litur',
+    'Aldur',
+    'FelagEiganda',
+    'Lid',
+    'NafnBIG',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'E5',
+    'E6',
+    'adalE1',
+    'adalE2',
+    'adalE3',
+    'adalE4',
+    'adalE5',
+    'adalE6',
+  ];
 
   if (!Array.isArray(leaderboard) || leaderboard.length === 0) {
-    return headers + '\n';
+    return baseHeaders.join(',') + '\n';
   }
 
-  const rows = leaderboard.map((entry) => {
-    const nr = entry.Nr || '';
-    const saeti = entry.Saeti || '';
-    const holl = entry.Holl || '';
-    const hond = entry.Hond || '';
-    const knapi = escapeCsvField(entry.Knapi || '');
-    const liturRas = escapeCsvField(entry.LiturRas || '');
-    const felagKnapa = escapeCsvField(entry.FelagKnapa || '');
-    const hestur = escapeCsvField(entry.Hestur || '');
-    const litur = escapeCsvField(entry.Litur || '');
-    const aldur = entry.Aldur || '';
-    const felagEiganda = escapeCsvField(entry.FelagEiganda || '');
-    const lid = entry.Lid || '';
-    const nafnBIG = escapeCsvField(entry.NafnBIG || '');
-    const e1 = entry.E1 || '';
-    const e2 = entry.E2 || '';
-    const e3 = entry.E3 || '';
-    const e4 = entry.E4 || '';
-    const e5 = entry.E5 || '';
-    const e6 = entry.E6 || '';
-    const adalE1 = entry.adalE1 || '';
-    const adalE2 = entry.adalE2 || '';
-    const adalE3 = entry.adalE3 || '';
-    const adalE4 = entry.adalE4 || '';
-    const adalE5 = entry.adalE5 || '';
-    const adalE6 = entry.adalE6 || '';
-    const toltE1 = entry.toltE1 || '';
-    const toltE2 = entry.toltE2 || '';
-    const toltE3 = entry.toltE3 || '';
-    const toltE4 = entry.toltE4 || '';
-    const toltE5 = entry.toltE5 || '';
-    const toltE6 = entry.toltE6 || '';
-    const brokkE1 = entry.brokkE1 || '';
-    const brokkE2 = entry.brokkE2 || '';
-    const brokkE3 = entry.brokkE3 || '';
-    const brokkE4 = entry.brokkE4 || '';
-    const brokkE5 = entry.brokkE5 || '';
-    const brokkE6 = entry.brokkE6 || '';
-    const skeðE1 = entry.skeðE1 || '';
-    const skeðE2 = entry.skeðE2 || '';
-    const skeðE3 = entry.skeðE3 || '';
-    const skeðE4 = entry.skeðE4 || '';
-    const skeðE5 = entry.skeðE5 || '';
-    const skeðE6 = entry.skeðE6 || '';
-    const stökkE1 = entry.stökkE1 || '';
-    const stökkE2 = entry.stökkE2 || '';
-    const stökkE3 = entry.stökkE3 || '';
-    const stökkE4 = entry.stökkE4 || '';
-    const stökkE5 = entry.stökkE5 || '';
-    const stökkE6 = entry.stökkE6 || '';
-    const hægtE1 = entry.hægtE1 || '';
-    const hægtE2 = entry.hægtE2 || '';
-    const hægtE3 = entry.hægtE3 || '';
-    const hægtE4 = entry.hægtE4 || '';
-    const hægtE5 = entry.hægtE5 || '';
-    const hægtE6 = entry.hægtE6 || '';
+  const excludedKeys = new Set([
+    'Nr',
+    'Saeti',
+    'Holl',
+    'Hond',
+    'Knapi',
+    'LiturRas',
+    'FelagKnapa',
+    'Hestur',
+    'Litur',
+    'Aldur',
+    'FelagEiganda',
+    'Lid',
+    'NafnBIG',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'E5',
+    'E6',
+    'adal',
+    'timestamp',
+  ]);
 
-    return `${nr},${saeti},${holl},${hond},${knapi},${liturRas},${felagKnapa},${hestur},${litur},${aldur},${felagEiganda},${lid},${nafnBIG},${e1},${e2},${e3},${e4},${e5},${e6},${adalE1},${adalE2},${adalE3},${adalE4},${adalE5},${adalE6},${toltE1},${toltE2},${toltE3},${toltE4},${toltE5},${toltE6},${brokkE1},${brokkE2},${brokkE3},${brokkE4},${brokkE5},${brokkE6},${skeðE1},${skeðE2},${skeðE3},${skeðE4},${skeðE5},${skeðE6},${stökkE1},${stökkE2},${stökkE3},${stökkE4},${stökkE5},${stökkE6},${hægtE1},${hægtE2},${hægtE3},${hægtE4},${hægtE5},${hægtE6}`;
+  const gaitKeys = new Set();
+  for (const entry of leaderboard) {
+    for (const [key, value] of Object.entries(entry || {})) {
+      if (excludedKeys.has(key)) continue;
+      if (value && typeof value === 'object') {
+        gaitKeys.add(key);
+      }
+    }
+  }
+
+  const priority = [
+    'tolt_frjals_hradi',
+    'haegt_tolt',
+    'tolt_med_slakan_taum',
+    'brokk',
+    'skeid',
+    'flugskeid',
+    'stokk',
+  ];
+  const sortedGaitKeys = [...gaitKeys].sort((a, b) => {
+    const ai = priority.indexOf(a);
+    const bi = priority.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
   });
 
-  return headers + '\n' + rows.join('\n') + '\n';
+  const gaitHeaders = [];
+  for (const key of sortedGaitKeys) {
+    gaitHeaders.push(
+      `${key}E1`,
+      `${key}E2`,
+      `${key}E3`,
+      `${key}E4`,
+      `${key}E5`,
+      `${key}E6`,
+    );
+  }
+
+  const headers = [...baseHeaders, ...gaitHeaders];
+
+  const rows = leaderboard.map((entry) => {
+    const baseValues = [
+      entry.Nr || '',
+      entry.Saeti || '',
+      entry.Holl || '',
+      entry.Hond || '',
+      escapeCsvField(entry.Knapi || ''),
+      escapeCsvField(entry.LiturRas || ''),
+      escapeCsvField(entry.FelagKnapa || ''),
+      escapeCsvField(entry.Hestur || ''),
+      escapeCsvField(entry.Litur || ''),
+      entry.Aldur || '',
+      escapeCsvField(entry.FelagEiganda || ''),
+      entry.Lid || '',
+      escapeCsvField(entry.NafnBIG || ''),
+      entry.E1 || '',
+      entry.E2 || '',
+      entry.E3 || '',
+      entry.E4 || '',
+      entry.E5 || '',
+      entry.E6 || '',
+      entry?.adal?.E1 || '',
+      entry?.adal?.E2 || '',
+      entry?.adal?.E3 || '',
+      entry?.adal?.E4 || '',
+      entry?.adal?.E5 || '',
+      entry?.adal?.E6 || '',
+    ];
+
+    const gaitValues = [];
+    for (const key of sortedGaitKeys) {
+      gaitValues.push(
+        entry?.[key]?.E1 || '',
+        entry?.[key]?.E2 || '',
+        entry?.[key]?.E3 || '',
+        entry?.[key]?.E4 || '',
+        entry?.[key]?.E5 || '',
+        entry?.[key]?.E6 || '',
+      );
+    }
+
+    return [...baseValues, ...gaitValues].join(',');
+  });
+
+  return headers.join(',') + '\n' + rows.join('\n') + '\n';
 }
 
 function escapeCsvField(field) {

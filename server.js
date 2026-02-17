@@ -5,7 +5,6 @@ import {
   registerRootRoute,
   registerTestRoute,
   registerWebhookRoutes,
-  registerCurrentRoutes,
   registerCacheRoutes,
 } from './src/webhooks.js';
 import { registerDocs } from './src/docs.js';

@@ -1,4 +1,3 @@
-
 import {
   getCurrentState,
   getLeaderboardState,
@@ -7,417 +6,91 @@ import {
 } from './state.js';
 import { leaderboardToCsv } from './normalizer.js';
 import { apiGetWithRetry } from '../sportfengur.js';
-import { SPORTFENGUR_LOCALE } from '../config.js';
+import { EVENT_ID_FILTER, SPORTFENGUR_LOCALE } from '../config.js';
 import { log } from '../logger.js';
 
-function extractGangtegundResults(currentState) {
-  const gangtegundTypes = {};
+const COMPETITION_TYPE_TO_ID = {
+  forkeppni: 1,
+  'a-urslit': 2,
+  'b-urslit': 3,
+};
 
-  currentState.forEach((rider) => {
-    for (const [key, value] of Object.entries(rider)) {
-      const excludeKeys = new Set([
-        'Nr',
-        'Saeti',
-        'Holl',
-        'Hond',
-        'Knapi',
-        'LiturRas',
-        'FelagKnapa',
-        'Hestur',
-        'Litur',
-        'Aldur',
-        'FelagEiganda',
-        'Lid',
-        'NafnBIG',
-        'E1',
-        'E2',
-        'E3',
-        'E4',
-        'E5',
-        'E6',
-        'adal',
-        'timestamp',
-      ]);
-
-      if (!excludeKeys.has(key) && typeof value === 'object') {
-        if (!gangtegundTypes[key]) {
-          gangtegundTypes[key] = {
-            gangtegundKey: key,
-            title: value._title || key,
-            einkunnir: [],
-          };
-        }
-
-        const scores = {};
-        for (const [scoreKey, scoreValue] of Object.entries(value)) {
-          if (scoreKey !== '_title') {
-            scores[scoreKey] = scoreValue;
-          }
-        }
-
-        gangtegundTypes[key].einkunnir.push({
-          nafn: rider.Knapi,
-          saeti: rider.Saeti,
-          ...scores,
-        });
-      }
-    }
+function sortLeaderboard(entries, sort) {
+  const mode = sort === 'rank' ? 'rank' : 'start';
+  return [...entries].sort((a, b) => {
+    const valueA = Number(mode === 'rank' ? a.Saeti : a.Nr) || 999;
+    const valueB = Number(mode === 'rank' ? b.Saeti : b.Nr) || 999;
+    return valueA - valueB;
   });
+}
 
-  return Object.values(gangtegundTypes);
+function isRequestedEventAllowed(requestedEventId) {
+  if (EVENT_ID_FILTER == null) {
+    return true;
+  }
+  return requestedEventId === EVENT_ID_FILTER;
+}
+
+function resolveCompetitionRequest(req, res) {
+  const requestedEventId = Number(req.params.eventId);
+  if (!Number.isInteger(requestedEventId)) {
+    res.status(400).json({ error: 'Invalid event ID' });
+    return null;
+  }
+  if (!isRequestedEventAllowed(requestedEventId)) {
+    res.status(404).json({ error: 'No data available for this event' });
+    return null;
+  }
+
+  const competitionType = String(req.params.competitionType || '')
+    .trim()
+    .toLowerCase();
+  const competitionId = COMPETITION_TYPE_TO_ID[competitionType];
+
+  if (!competitionId) {
+    res.status(404).json({
+      error: 'Unknown competition type',
+      competitionType,
+      supported: Object.keys(COMPETITION_TYPE_TO_ID),
+    });
+    return null;
+  }
+
+  const metadata = getCompetitionSpecificMetadata(competitionId);
+  if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
+    res.status(404).json({
+      error: 'No data available for this event',
+      requestedEventId,
+      currentEventId: metadata.eventId,
+    });
+    return null;
+  }
+
+  const sort = req.query.sort == null ? 'start' : String(req.query.sort);
+  if (sort !== 'start' && sort !== 'rank') {
+    res.status(400).json({
+      error: 'Invalid sort value',
+      supported: ['start', 'rank'],
+    });
+    return null;
+  }
+
+  const leaderboard = getLeaderboardState(competitionId);
+  const sorted = sortLeaderboard(leaderboard, sort);
+  return { requestedEventId, competitionType, sort, sorted };
 }
 
 export function registerVmixRoutes(app) {
-  app.get('/current', (req, res) => {
-    const currentState = getCurrentState();
-
-    log.server.endpoint('/current', currentState.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(currentState);
-  });
-
-  app.get('/forkeppni/sorted', (req, res) => {
-    const currentState = getLeaderboardState(1);
-    const sorted = [...currentState].sort((a, b) => {
-      const saetiA = Number(a.Saeti) || 999;
-      const saetiB = Number(b.Saeti) || 999;
-      return saetiA - saetiB;
-    });
-
-    log.server.endpoint('/forkeppni/sorted', sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/forkeppni', (req, res) => {
-    const currentState = getLeaderboardState(1);
-    const sorted = [...currentState].sort((a, b) => {
-      const nrA = Number(a.Nr) || 999;
-      const nrB = Number(b.Nr) || 999;
-      return nrA - nrB;
-    });
-
-    log.server.endpoint('/forkeppni', sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/a/sorted', (req, res) => {
-    const currentState = getLeaderboardState(2);
-    const sorted = [...currentState].sort((a, b) => {
-      const saetiA = Number(a.Saeti) || 999;
-      const saetiB = Number(b.Saeti) || 999;
-      return saetiA - saetiB;
-    });
-
-    log.server.endpoint('/a/sorted', sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/a', (req, res) => {
-    const currentState = getLeaderboardState(2);
-    const sorted = [...currentState].sort((a, b) => {
-      const nrA = Number(a.Nr) || 999;
-      const nrB = Number(b.Nr) || 999;
-      return nrA - nrB;
-    });
-
-    log.server.endpoint('/a', sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/b/sorted', (req, res) => {
-    const currentState = getLeaderboardState(3);
-    const sorted = [...currentState].sort((a, b) => {
-      const saetiA = Number(a.Saeti) || 999;
-      const saetiB = Number(b.Saeti) || 999;
-      return saetiA - saetiB;
-    });
-
-    log.server.endpoint('/b/sorted', sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/b', (req, res) => {
-    const currentState = getLeaderboardState(3);
-    const sorted = [...currentState].sort((a, b) => {
-      const nrA = Number(a.Nr) || 999;
-      const nrB = Number(b.Nr) || 999;
-      return nrA - nrB;
-    });
-
-    log.server.endpoint('/b', sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/:eventId/results/a', (req, res) => {
+  app.get('/event/:eventId/current', (req, res) => {
     const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(2);
-
-    if (isNaN(requestedEventId)) {
+    if (!Number.isInteger(requestedEventId)) {
       return res.status(400).json({ error: 'Invalid event ID' });
     }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
+    if (!isRequestedEventAllowed(requestedEventId)) {
+      return res.status(404).json({ error: 'No data available for this event' });
     }
 
-    if (metadata.competitionId !== null && metadata.competitionId !== 2) {
-      return res.status(404).json({
-        error: 'No A-úrslit data available',
-        currentCompetitionId: metadata.competitionId,
-      });
-    }
-
-    const currentState = getCurrentState();
-    const resultsArray = extractGangtegundResults(currentState);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(resultsArray);
-  });
-
-  app.get('/:eventId/results/b', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(3);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    if (metadata.competitionId !== null && metadata.competitionId !== 3) {
-      return res.status(404).json({
-        error: 'No B-úrslit data available',
-        currentCompetitionId: metadata.competitionId,
-      });
-    }
-
-    const currentState = getCurrentState();
-    const resultsArray = extractGangtegundResults(currentState);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(resultsArray);
-  });
-
-  app.get('/:eventId/forkeppni/sorted', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(1);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No Forkeppni data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    const currentState = getLeaderboardState(1);
-    const sorted = [...currentState].sort((a, b) => {
-      const saetiA = Number(a.Saeti) || 999;
-      const saetiB = Number(b.Saeti) || 999;
-      return saetiA - saetiB;
-    });
-
-    log.server.endpoint(`/${requestedEventId}/forkeppni/sorted`, sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/:eventId/forkeppni', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(1);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No Forkeppni data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    const currentState = getLeaderboardState(1);
-    const sorted = [...currentState].sort((a, b) => {
-      const nrA = Number(a.Nr) || 999;
-      const nrB = Number(b.Nr) || 999;
-      return nrA - nrB;
-    });
-
-    log.server.endpoint(`/${requestedEventId}/forkeppni`, sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/:eventId/a/sorted', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(2);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No A-úrslit data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    const currentState = getLeaderboardState(2);
-    const sorted = [...currentState].sort((a, b) => {
-      const saetiA = Number(a.Saeti) || 999;
-      const saetiB = Number(b.Saeti) || 999;
-      return saetiA - saetiB;
-    });
-
-    log.server.endpoint(`/${requestedEventId}/a/sorted`, sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/:eventId/a', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(2);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No A-úrslit data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    const currentState = getLeaderboardState(2);
-    const sorted = [...currentState].sort((a, b) => {
-      const nrA = Number(a.Nr) || 999;
-      const nrB = Number(b.Nr) || 999;
-      return nrA - nrB;
-    });
-
-    log.server.endpoint(`/${requestedEventId}/a`, sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/:eventId/b/sorted', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(3);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No B-úrslit data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    const currentState = getLeaderboardState(3);
-    const sorted = [...currentState].sort((a, b) => {
-      const saetiA = Number(a.Saeti) || 999;
-      const saetiB = Number(b.Saeti) || 999;
-      return saetiA - saetiB;
-    });
-
-    log.server.endpoint(`/${requestedEventId}/b/sorted`, sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/:eventId/b', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
-    const metadata = getCompetitionSpecificMetadata(3);
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
-      return res.status(404).json({
-        error: 'No B-úrslit data available for this event',
-        requestedEventId,
-        currentEventId: metadata.eventId,
-      });
-    }
-
-    const currentState = getLeaderboardState(3);
-    const sorted = [...currentState].sort((a, b) => {
-      const nrA = Number(a.Nr) || 999;
-      const nrB = Number(b.Nr) || 999;
-      return nrA - nrB;
-    });
-
-    log.server.endpoint(`/${requestedEventId}/b`, sorted.length);
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'application/json');
-    res.json(sorted);
-  });
-
-  app.get('/current/:eventId', (req, res) => {
-    const requestedEventId = Number(req.params.eventId);
     const metadata = getCompetitionMetadata();
-
-    if (isNaN(requestedEventId)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
     if (metadata.eventId !== null && metadata.eventId !== requestedEventId) {
       return res.status(404).json({
         error: 'No data available for this event',
@@ -427,9 +100,47 @@ export function registerVmixRoutes(app) {
     }
 
     const currentState = getCurrentState();
+
+    log.server.endpoint(`/event/${requestedEventId}/current`, currentState.length);
+
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/json');
     res.json(currentState);
+  });
+
+  app.get('/event/:eventId/:competitionType', (req, res) => {
+    const resolved = resolveCompetitionRequest(req, res);
+    if (!resolved) return;
+    const { requestedEventId, competitionType, sort, sorted } = resolved;
+
+    log.server.endpoint(
+      `/event/${requestedEventId}/${competitionType}?sort=${sort}`,
+      sorted.length,
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(sorted);
+  });
+
+  app.get('/event/:eventId/:competitionType/csv', (req, res) => {
+    const resolved = resolveCompetitionRequest(req, res);
+    if (!resolved) return;
+    const { requestedEventId, competitionType, sort, sorted } = resolved;
+
+    const csv = leaderboardToCsv(sorted);
+    log.server.endpoint(
+      `/event/${requestedEventId}/${competitionType}/csv?sort=${sort}`,
+      sorted.length,
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${competitionType}-${requestedEventId}-${sort}.csv"`,
+    );
+    res.send(csv);
   });
 
   app.get('/leaderboard.csv', (req, res) => {

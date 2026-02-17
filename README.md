@@ -27,9 +27,18 @@ http://localhost:3000/health
 http://localhost:3000/docs
 ```
 
-## 5) wMix /current JSON
-- `POST /current` setur inn nýjustu JSON gögn
-- `GET /current` skilar síðustu JSON gögnunum
+## 5) vMix API
+- `GET /event/{eventId}/current` skilar leaderboard fyrir virka keppni ef eventId passar.
+- `GET /event/{eventId}/{competitionType}` skilar leaderboard fyrir tiltekna keppni:
+  - `competitionType`: `forkeppni`, `a-urslit`, `b-urslit`
+  - `sort`: `start` (sjálfgefið) eða `rank`
+- `GET /event/{eventId}/{competitionType}/csv` skilar sama leaderboard sem CSV:
+  - `sort`: `start` (sjálfgefið) eða `rank`
+- Dæmi:
+  - `/event/70617/a-urslit`
+  - `/event/70617/b-urslit?sort=rank`
+  - `/event/70617/a-urslit/csv`
+  - `/event/70617/a-urslit/csv?sort=rank`
 
 ## 6) Handvirk einkunnaköll (valfrjálst)
 Skripturnar eru í `release\`:
