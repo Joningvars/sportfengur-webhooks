@@ -325,6 +325,7 @@ export function registerVmixRoutes(app) {
       horse: entry.Hestur || '',
       Lid: entry.Lid || '',
       Nr: entry.Nr || '',
+      saeti: entry.Saeti || '',
       einkunn: entry.E6 || '',
     }));
     const groups = chunkEntries(vmixRows, groupSize);
@@ -366,6 +367,7 @@ export function registerVmixRoutes(app) {
       horse: entry.Hestur || '',
       Lid: entry.Lid || '',
       Nr: entry.Nr || '',
+      saeti: entry.Saeti || '',
       einkunn: entry.E6 || '',
     }));
     const groups = chunkEntries(vmixRows, groupSize);
@@ -400,6 +402,7 @@ export function registerVmixRoutes(app) {
       horse: entry.Hestur || '',
       Lid: entry.Lid || '',
       Nr: entry.Nr || '',
+      saeti: entry.Saeti || '',
       einkunn: entry.E6 || '',
     }));
 
@@ -413,6 +416,7 @@ export function registerVmixRoutes(app) {
         row[`horse${n}`] = contestant?.horse || '';
         row[`Lid${n}`] = contestant?.Lid || '';
         row[`Nr${n}`] = contestant?.Nr || '';
+        row[`saeti${n}`] = contestant?.saeti || '';
         row[`einkunn${n}`] = contestant?.einkunn || '';
       }
       return row;
@@ -551,6 +555,61 @@ export function registerVmixRoutes(app) {
       console.error(`[vMix Server] Error searching events:`, error);
       res.status(error.status || 500).json({
         error: 'Failed to search events',
+        message: error.message,
+      });
+    }
+  });
+
+  app.get('/person/find/:kennitala', async (req, res) => {
+    try {
+      const kennitala = String(req.params.kennitala || '').trim();
+      if (!kennitala) {
+        return res.status(400).json({ error: 'Invalid kennitala' });
+      }
+
+      const data = await apiGetWithRetry(`/person/find/${kennitala}`);
+
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('Content-Type', 'application/json');
+      res.json(data);
+    } catch (error) {
+      console.error(`[vMix Server] Error finding person by kennitala:`, error);
+      res.status(error.status || 500).json({
+        error: 'Failed to find person',
+        message: error.message,
+      });
+    }
+  });
+
+  app.get('/person/:personId/events', async (req, res) => {
+    try {
+      const personId = Number.parseInt(String(req.params.personId), 10);
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return res.status(400).json({ error: 'Invalid person ID' });
+      }
+
+      const requestedLocale = String(
+        req.query.locale || SPORTFENGUR_LOCALE,
+      ).toLowerCase();
+      const allowedLocales = new Set(['is', 'en', 'fo', 'nb', 'sv']);
+      if (!allowedLocales.has(requestedLocale)) {
+        return res.status(400).json({
+          error: 'Invalid locale',
+          supported: ['is', 'en', 'fo', 'nb', 'sv'],
+        });
+      }
+
+      const data = await apiGetWithRetry(
+        `/${requestedLocale}/person/events/${personId}`,
+      );
+
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('Content-Type', 'application/json');
+      res.json(data);
+    } catch (error) {
+      console.error(`[vMix Server] Error fetching person event history:`, error);
+      res.status(error.status || 500).json({
+        error: 'Failed to fetch person events',
         message: error.message,
       });
     }

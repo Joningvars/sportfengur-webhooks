@@ -272,7 +272,13 @@ export const openApiSpec = {
             description: 'Grouped leaderboard entries',
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/GroupedLeaderboardResponse' },
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/GroupedContestant' },
+                  },
+                },
               },
             },
           },
@@ -361,7 +367,7 @@ export const openApiSpec = {
         tags: ['Competition Data'],
         summary: 'Competition Leaderboard Groups (Flat Rows)',
         description:
-          'Returns one row per group with indexed contestant fields (name1..nameN, horse1..horseN, Lid1..LidN, Nr1..NrN, einkunn1..einkunnN).',
+          'Returns one row per group with indexed contestant fields (name1..nameN, horse1..horseN, Lid1..LidN, Nr1..NrN, saeti1..saetiN, einkunn1..einkunnN).',
         parameters: [
           {
             name: 'eventId',
@@ -651,6 +657,72 @@ export const openApiSpec = {
         },
       },
     },
+    '/person/find/{kennitala}': {
+      get: {
+        tags: ['Event Information'],
+        summary: 'Find Person By Kennitala',
+        description:
+          'Returns Sportfengur person_id for a given kennitala (national ID/SSN).',
+        parameters: [
+          {
+            name: 'kennitala',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Found person id or -1 if not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PersonFindResponse' },
+              },
+            },
+          },
+          400: { description: 'Invalid kennitala' },
+          500: { description: 'Failed to find person' },
+        },
+      },
+    },
+    '/person/{personId}/events': {
+      get: {
+        tags: ['Event Information'],
+        summary: 'Person Event History',
+        description:
+          'Returns all events/tests the person has participated in. Locale defaults to configured SPORTFENGUR_LOCALE.',
+        parameters: [
+          {
+            name: 'personId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+          {
+            name: 'locale',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['is', 'en', 'fo', 'nb', 'sv'],
+              default: 'is',
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Person event history payload',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PersonEventsResponse' },
+              },
+            },
+          },
+          400: { description: 'Invalid person ID or locale' },
+          500: { description: 'Failed to fetch person events' },
+        },
+      },
+    },
     '/event_einkunn_saeti': {
       post: webhookPost(
         'Score Update Webhook',
@@ -812,17 +884,51 @@ export const openApiSpec = {
           horse: { type: 'string', example: 'Díana frá Bakkakoti' },
           Lid: { type: 'string', example: '' },
           Nr: { type: 'string', example: '5' },
+          saeti: { type: 'string', example: '1' },
           einkunn: { type: 'string', example: '8.50' },
         },
       },
       GroupedContestantFlatRow: {
         type: 'object',
         properties: {
-          name: { type: 'string', example: 'Jón Ársæll Bergmann' },
-          horse: { type: 'string', example: 'Díana frá Bakkakoti' },
-          Lid: { type: 'string', example: '' },
-          Nr: { type: 'string', example: '5' },
           group: { type: 'integer', example: 1 },
+          name1: { type: 'string', example: 'Jón Ársæll Bergmann' },
+          horse1: { type: 'string', example: 'Díana frá Bakkakoti' },
+          Lid1: { type: 'string', example: '' },
+          Nr1: { type: 'string', example: '5' },
+          saeti1: { type: 'string', example: '1' },
+          einkunn1: { type: 'string', example: '8.50' },
+        },
+      },
+      PersonFindResponse: {
+        type: 'object',
+        properties: {
+          person_id: { type: 'integer', example: 123 },
+        },
+      },
+      PersonEventHistoryRow: {
+        type: 'object',
+        properties: {
+          mot_numer: { type: 'integer', example: 999 },
+          mot_heiti: { type: 'string', example: 'Event name' },
+          mot_byrjar: { type: 'string', example: '2023-06-10' },
+          mot_endar: { type: 'string', example: '2023-06-11' },
+          keppnisgrein: { type: 'string', example: 'Tolt T1' },
+          flokkur: { type: 'string', example: 'Fullordinsflokkur' },
+          keppni: { type: 'string', example: 'Forkeppni' },
+          einkunn: { type: 'number', example: 7.7 },
+          saeti: { type: 'integer', example: 2 },
+        },
+        additionalProperties: true,
+      },
+      PersonEventsResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'integer', example: 1 },
+          history: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/PersonEventHistoryRow' },
+          },
         },
       },
     },
