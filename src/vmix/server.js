@@ -238,7 +238,14 @@ function renderControlHtml() {
     .danger:hover:not(:disabled) { background:var(--dangerHover); }
     .primary:focus-visible,.secondary:focus-visible,.danger:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid #93c5fd; outline-offset:1px; }
     .muted { color:var(--muted); font-size:14px; margin:10px 0 0; }
+    .statebox { margin-top:10px; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; background:#f9fafb; color:#111827; font-size:13px; line-height:1.45; }
+    .statebox .title { font-weight:700; margin-bottom:8px; }
+    .stategrid { display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center; }
+    .statekey { font-weight:600; }
+    .stateval { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+    .stateval.missing { color:#6b7280; }
     pre { margin:0; white-space:pre-wrap; background:#111827; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:12px; min-height:120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size:13px; }
+    #webhookLog { min-height:120px; max-height:220px; overflow:auto; }
     .ok { color:var(--ok); }
     .warn { color:var(--warn); }
     .three { display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px; }
@@ -253,19 +260,17 @@ function renderControlHtml() {
         <h1>Eidfaxi Stjornborð</h1>
         <div class="sub">Veldu virkt mot og keyrðu handvirka uppfærslu úr Sportfengur fyrir vMix grafík.</div>
       </div>
-      <div id="filterStatus" class="status">Motasía: hleð...</div>
     </div>
     <div class="grid">
     <div class="card">
       <h2>Handvirk uppfærsla</h2>
-      <label>Motanúmer</label>
-      <input id="eventId" type="number" placeholder="70617" />
-      <div class="row">
-        <div>
-          <label>Flokksnúmer (classId)</label>
-          <input id="classId" type="number" placeholder="Settu inn classId fyrir fyrstu uppfaerslu" />
-        </div>
-      </div>
+      <div id="filterStatus" class="status">Motasía: hleð...</div>
+      <label>Veldu mot</label>
+      <select id="eventSelect">
+        <option value="">Hleð motum...</option>
+      </select>
+      <label>Flokksnúmer (classId) - valfrjálst</label>
+      <input id="classIdInput" type="number" placeholder="T.d. 203060" />
       <div class="btns">
         <button class="secondary" onclick="setEventFilter()">Vista mot</button>
         <button class="danger" onclick="clearEventFilter()">Hreinsa mot</button>
@@ -275,7 +280,8 @@ function renderControlHtml() {
         <button id="btn-a-urslit" data-refresh-btn class="primary" onclick="refreshCompetition('a-urslit')">Uppfæra a-urslit</button>
         <button id="btn-b-urslit" data-refresh-btn class="primary" onclick="refreshCompetition('b-urslit')">Uppfæra b-urslit</button>
       </div>
-      <p class="muted">Fyrst: settu inn Motanumer og Flokksnumer. Svo velurðu hnapp fyrir rétta keppnisgerð.</p>
+      <div id="classIdState" class="statebox">classId state: hleð...</div>
+      <p class="muted">Veldu mot. Ef classId vantar í state geturðu sett það handvirkt hér.</p>
       <h2 style="margin-top:14px">Niðurstaða</h2>
       <pre id="result"></pre>
       <h2 style="margin-top:14px">Nýleg webhook skilaboð</h2>
@@ -287,8 +293,9 @@ function renderControlHtml() {
     const out = document.getElementById('result');
     const webhookOut = document.getElementById('webhookLog');
     const filterStatus = document.getElementById('filterStatus');
-    const eventIdInput = document.getElementById('eventId');
-    const classIdInput = document.getElementById('classId');
+    const classIdState = document.getElementById('classIdState');
+    const eventSelect = document.getElementById('eventSelect');
+    const classIdInput = document.getElementById('classIdInput');
     const card = document.querySelector('.card');
     const refreshButtons = Array.from(document.querySelectorAll('[data-refresh-btn]'));
     const actionButtons = Array.from(document.querySelectorAll('button'));
@@ -316,12 +323,77 @@ function renderControlHtml() {
       currentFilterValue = val ? Number(val) : null;
       filterStatus.textContent = val ? 'Motasía: ' + val : 'Motasía: engin';
     }
-    function hasInputContext() {
-      return eventIdInput.value.trim() !== '' && classIdInput.value.trim() !== '';
+    function getSelectedEventId() {
+      const raw = String(eventSelect.value || '').trim();
+      if (!raw) return null;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    }
+    function upsertSelectedEventOption(eventId) {
+      if (!eventId) return;
+      const value = String(eventId);
+      const existing = Array.from(eventSelect.options).find((o) => o.value === value);
+      if (existing) {
+        eventSelect.value = value;
+        return;
+      }
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value + ' - Valið mot';
+      eventSelect.prepend(option);
+      eventSelect.value = value;
+    }
+    async function loadEventOptions() {
+      const year = new Date().getFullYear();
+      const r = await fetch('/events/search?ar=' + year + '&land=IS&innanhusmot=1');
+      const data = await r.json();
+      const events = Array.isArray(data?.tournaments)
+        ? data.tournaments
+        : Array.isArray(data?.res)
+          ? data.res
+          : [];
+      if (!r.ok) {
+        throw new Error(data?.message || data?.error || 'Failed to load events');
+      }
+      const normalized = events.map((item) => {
+        const eventId = item.numer ?? item.mot_numer ?? item.eventId ?? item.id;
+        const name = item.motsheiti ?? item.mot_heiti ?? item.name ?? 'Mot';
+        const startsAt =
+          item.byrjunardagsetning ??
+          item.dagsetning_byrjar ??
+          item.mot_byrjar ??
+          '';
+        return {
+          eventId: Number.parseInt(String(eventId), 10),
+          name: String(name || 'Mot'),
+          startsAt: String(startsAt || ''),
+        };
+      }).filter((item) => Number.isInteger(item.eventId) && item.eventId > 0);
+      normalized.sort((a, b) => String(b.startsAt).localeCompare(String(a.startsAt)));
+
+      eventSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Veldu mot...';
+      eventSelect.appendChild(placeholder);
+
+      normalized.forEach((item) => {
+        const option = document.createElement('option');
+        option.value = String(item.eventId);
+        option.textContent = item.startsAt
+          ? item.eventId + ' - ' + item.name + ' (' + item.startsAt + ')'
+          : item.eventId + ' - ' + item.name;
+        eventSelect.appendChild(option);
+      });
+
+      const selected = currentFilterValue || getSelectedEventId();
+      if (selected) {
+        upsertSelectedEventOption(selected);
+      }
     }
     function hasStateContext() {
       if (!eventState) return false;
-      const selectedEventId = parseInt(eventIdInput.value, 10) || currentFilterValue;
+      const selectedEventId = getSelectedEventId() || currentFilterValue;
       if (!selectedEventId) return false;
       if (
         Number(eventState?.current?.eventId) === Number(selectedEventId) &&
@@ -337,8 +409,46 @@ function renderControlHtml() {
           c.classId,
       );
     }
+    function renderClassIdState() {
+      if (!eventState) {
+        classIdState.textContent = 'classId state: engin gögn.';
+        return;
+      }
+      const selectedEventId = getSelectedEventId() || currentFilterValue;
+      if (!selectedEventId) {
+        classIdState.textContent = 'classId state: veldu mot til að sjá classId.';
+        return;
+      }
+      const competitions = [
+        { id: 1, label: 'forkeppni' },
+        { id: 2, label: 'a-urslit' },
+        { id: 3, label: 'b-urslit' },
+      ];
+      const rows = competitions.map((item) => {
+        const c = eventState?.competitions?.[item.id];
+        const match = c && Number(c.eventId) === Number(selectedEventId);
+        const value = match && c.classId ? String(c.classId) : null;
+        return { label: item.label, value };
+      });
+      classIdState.innerHTML =
+        '<div class="title">classId í state fyrir mót ' + selectedEventId + '</div>' +
+        '<div class="stategrid">' +
+        rows.map((row) => {
+          const valueHtml = row.value
+            ? '<span class="stateval">' + row.value + '</span>'
+            : '<span class="stateval missing">ekki til</span>';
+          return '<div class="statekey">' + row.label + '</div><div>' + valueHtml + '</div>';
+        }).join('') +
+        '</div>';
+    }
+    function hasManualContext() {
+      const selectedEventId = getSelectedEventId() || currentFilterValue;
+      if (!selectedEventId) return false;
+      const classId = Number.parseInt(String(classIdInput.value || '').trim(), 10);
+      return Number.isInteger(classId) && classId > 0;
+    }
     function syncRefreshButtons() {
-      const enabled = hasInputContext() || hasStateContext();
+      const enabled = hasStateContext() || hasManualContext();
       refreshButtons.forEach((btn) => {
         btn.disabled = !enabled || busy;
       });
@@ -346,6 +456,7 @@ function renderControlHtml() {
     async function getEventState() {
       const r = await fetch('/event/state');
       eventState = await r.json();
+      renderClassIdState();
       syncRefreshButtons();
     }
     async function getWebhookLog() {
@@ -376,7 +487,9 @@ function renderControlHtml() {
         const r = await fetch('/config/event-filter');
         const data = await r.json();
         setFilterStatus(data?.eventIdFilter);
+        upsertSelectedEventOption(data?.eventIdFilter);
         show(data, r.ok);
+        await loadEventOptions();
         await getEventState();
         await getWebhookLog();
       } finally {
@@ -386,10 +499,15 @@ function renderControlHtml() {
     async function setEventFilter() {
       setBusy(true);
       try {
-        const eventId = Number(document.getElementById('eventId').value);
+        const eventId = getSelectedEventId();
+        if (!eventId) {
+          show('Veldu mot fyrst.', false);
+          return;
+        }
         const r = await fetch('/config/event-filter', { method:'POST', headers: headers(), body: JSON.stringify({ eventIdFilter: eventId }) });
         const data = await r.json();
         setFilterStatus(data?.eventIdFilter);
+        upsertSelectedEventOption(data?.eventIdFilter);
         show(data, r.ok);
         await getEventState();
         await getWebhookLog();
@@ -403,6 +521,7 @@ function renderControlHtml() {
         const r = await fetch('/config/event-filter', { method:'POST', headers: headers(), body: JSON.stringify({ eventIdFilter: null }) });
         const data = await r.json();
         setFilterStatus(data?.eventIdFilter);
+        eventSelect.value = '';
         show(data, r.ok);
         await getEventState();
         await getWebhookLog();
@@ -413,11 +532,13 @@ function renderControlHtml() {
     async function refreshCompetition(competitionType) {
       setBusy(true);
       try {
-        const eventIdRaw = document.getElementById('eventId').value;
-        const classIdRaw = document.getElementById('classId').value;
+        const eventId = getSelectedEventId();
         const body = {};
-        if (eventIdRaw !== '') body.eventId = Number(eventIdRaw);
-        if (classIdRaw !== '') body.classId = Number(classIdRaw);
+        if (eventId) body.eventId = eventId;
+        const classId = Number.parseInt(String(classIdInput.value || '').trim(), 10);
+        if (Number.isInteger(classId) && classId > 0) {
+          body.classId = classId;
+        }
         const r = await fetch('/event/' + competitionType + '/refresh', {
           method: 'POST',
           headers: headers(),
@@ -425,7 +546,7 @@ function renderControlHtml() {
         });
         const data = await r.json();
         if (!r.ok && data?.error === 'Missing classId (and no classId found in state)') {
-          show('Vantar Flokksnumer (classId). Settu classId i reitinn og smelltu aftur.', false);
+          show('Vantar classId i state fyrir valið mot/keppni. Biddu eftir webhook eða keyrdu raslista webhook fyrst.', false);
           return;
         }
         show(data, r.ok);
@@ -435,7 +556,8 @@ function renderControlHtml() {
         setBusy(false);
       }
     }
-    eventIdInput.addEventListener('input', syncRefreshButtons);
+    eventSelect.addEventListener('change', syncRefreshButtons);
+    eventSelect.addEventListener('change', renderClassIdState);
     classIdInput.addEventListener('input', syncRefreshButtons);
     syncRefreshButtons();
     getEventFilter().catch((e) => show(String(e), false));
@@ -707,12 +829,11 @@ export function registerVmixRoutes(app) {
       });
     }
 
+    const bodyClassId =
+      req.body?.classId == null ? null : parsePositiveInt(req.body.classId);
     const classId =
-      req.body?.classId == null
-        ? Number(metadata.eventId) === Number(eventId)
-          ? metadata.classId
-          : null
-        : parsePositiveInt(req.body.classId);
+      bodyClassId ??
+      (Number(metadata.eventId) === Number(eventId) ? metadata.classId : null);
     if (!classId) {
       return res
         .status(400)
@@ -822,8 +943,16 @@ export function registerVmixRoutes(app) {
       ];
 
       for (const param of allowedParams) {
-        if (req.query[param] !== undefined) {
-          queryParams.append(param, req.query[param]);
+        const value = req.query[param];
+        if (value == null) continue;
+        const text = String(value).trim();
+        if (!text) continue;
+        queryParams.append(param, text);
+      }
+      if (req.query.land_kodi == null && req.query.land != null) {
+        const land = String(req.query.land).trim();
+        if (land) {
+          queryParams.append('land_kodi', land);
         }
       }
 
