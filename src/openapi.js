@@ -216,16 +216,7 @@ export const openApiSpec = {
       get: {
         tags: ['Competition Data'],
         summary: 'Current Leaderboard',
-        description:
-          'Returns current leaderboard only when requested eventId matches current state.',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
-        ],
+        description: 'Returns current in-memory leaderboard.',
         responses: {
           200: {
             description: 'Leaderboard entries',
@@ -238,8 +229,6 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID' },
-          404: { description: 'No data available for this event' },
         },
       },
     },
@@ -250,12 +239,6 @@ export const openApiSpec = {
         description:
           'Returns leaderboard for a competition type. Use sort=start or sort=rank.',
         parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
           {
             name: 'competitionType',
             in: 'path',
@@ -288,9 +271,9 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID or sort value' },
+          400: { description: 'Invalid sort value' },
           404: {
-            description: 'Unknown competition type or no data available for this event',
+            description: 'Unknown competition type',
           },
         },
       },
@@ -302,12 +285,6 @@ export const openApiSpec = {
         description:
           'Returns leaderboard entries grouped into chunks (default 7) for start-screen display.',
         parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
           {
             name: 'competitionType',
             in: 'path',
@@ -354,9 +331,9 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID, sort value, or groupSize' },
+          400: { description: 'Invalid sort value or groupSize' },
           404: {
-            description: 'Unknown competition type or no data available for this event',
+            description: 'Unknown competition type',
           },
         },
       },
@@ -368,12 +345,6 @@ export const openApiSpec = {
         description:
           'Returns a single contestant group as a flat array (default group=1, groupSize=7), useful for vMix data sources.',
         parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
           {
             name: 'competitionType',
             in: 'path',
@@ -427,9 +398,9 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID, sort value, groupSize, or group' },
+          400: { description: 'Invalid sort value, groupSize, or group' },
           404: {
-            description: 'Unknown competition type or no data available for this event',
+            description: 'Unknown competition type',
           },
         },
       },
@@ -441,12 +412,6 @@ export const openApiSpec = {
         description:
           'Returns one row per group with indexed contestant fields (name1..nameN, horse1..horseN, Lid1..LidN, Nr1..NrN, saeti1..saetiN, einkunn1..einkunnN).',
         parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
           {
             name: 'competitionType',
             in: 'path',
@@ -490,9 +455,9 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID, sort value, or groupSize' },
+          400: { description: 'Invalid sort value or groupSize' },
           404: {
-            description: 'Unknown competition type or no data available for this event',
+            description: 'Unknown competition type',
           },
         },
       },
@@ -504,12 +469,6 @@ export const openApiSpec = {
         description:
           'Returns leaderboard CSV for a competition type. Use sort=start or sort=rank.',
         parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
           {
             name: 'competitionType',
             in: 'path',
@@ -539,9 +498,9 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID or sort value' },
+          400: { description: 'Invalid sort value' },
           404: {
-            description: 'Unknown competition type or no data available for this event',
+            description: 'Unknown competition type',
           },
         },
       },
@@ -553,12 +512,6 @@ export const openApiSpec = {
         description:
           'Returns flat gait-result rows grouped by gangtegund. sort=start (default) orders each gangtegund by start number (Nr). sort=rank orders each gangtegund by highest E6 first; pos is assigned per gangtegund.',
         parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
           {
             name: 'competitionType',
             in: 'path',
@@ -591,9 +544,9 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID or sort value' },
+          400: { description: 'Invalid sort value' },
           404: {
-            description: 'Unknown competition type or no data available for this event',
+            description: 'Unknown competition type',
           },
         },
       },
@@ -649,14 +602,6 @@ export const openApiSpec = {
         summary: 'All Leaderboards ZIP',
         description:
           'Returns a ZIP file with current and per-competition CSV exports (start and rank).',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
-        ],
         responses: {
           200: {
             description: 'ZIP archive',
@@ -669,8 +614,6 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID' },
-          404: { description: 'No data available for this event' },
         },
       },
     },
@@ -679,15 +622,7 @@ export const openApiSpec = {
         tags: ['Competition Data'],
         summary: 'All Leaderboards CSV ZIP',
         description:
-          'Alias for /event/{eventId}/leaderboards.zip. Returns a ZIP file with current and per-competition CSV exports (start and rank).',
-        parameters: [
-          {
-            name: 'eventId',
-            in: 'path',
-            required: true,
-            schema: { type: 'integer' },
-          },
-        ],
+          'Alias for /event/leaderboards.zip. Returns a ZIP file with current and per-competition CSV exports (start and rank).',
         responses: {
           200: {
             description: 'ZIP archive',
@@ -700,8 +635,6 @@ export const openApiSpec = {
               },
             },
           },
-          400: { description: 'Invalid event ID' },
-          404: { description: 'No data available for this event' },
         },
       },
     },
