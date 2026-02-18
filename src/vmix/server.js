@@ -269,6 +269,10 @@ function renderControlHtml() {
       <select id="eventSelect">
         <option value="">Hleð motum...</option>
       </select>
+      <label>ClassId úr Sportfengur (valfrjálst)</label>
+      <select id="classIdSelect">
+        <option value="">Sjálfvirkt val per keppni</option>
+      </select>
       <label>Flokksnúmer (classId) - valfrjálst</label>
       <input id="classIdInput" type="number" placeholder="T.d. 203060" />
       <div class="btns">
@@ -276,9 +280,9 @@ function renderControlHtml() {
         <button class="danger" onclick="clearEventFilter()">Hreinsa mot</button>
       </div>
       <div class="three">
-        <button id="btn-forkeppni" data-refresh-btn class="primary" onclick="refreshCompetition('forkeppni')">Uppfæra forkeppni</button>
-        <button id="btn-a-urslit" data-refresh-btn class="primary" onclick="refreshCompetition('a-urslit')">Uppfæra a-urslit</button>
-        <button id="btn-b-urslit" data-refresh-btn class="primary" onclick="refreshCompetition('b-urslit')">Uppfæra b-urslit</button>
+        <button id="btn-forkeppni" data-refresh-btn data-competition-type="forkeppni" class="primary" onclick="refreshCompetition('forkeppni')">Uppfæra forkeppni</button>
+        <button id="btn-a-urslit" data-refresh-btn data-competition-type="a-urslit" class="primary" onclick="refreshCompetition('a-urslit')">Uppfæra a-urslit</button>
+        <button id="btn-b-urslit" data-refresh-btn data-competition-type="b-urslit" class="primary" onclick="refreshCompetition('b-urslit')">Uppfæra b-urslit</button>
       </div>
       <div id="classIdState" class="statebox">classId state: hleð...</div>
       <p class="muted">Veldu mot. Ef classId vantar í state geturðu sett það handvirkt hér.</p>
@@ -295,11 +299,14 @@ function renderControlHtml() {
     const filterStatus = document.getElementById('filterStatus');
     const classIdState = document.getElementById('classIdState');
     const eventSelect = document.getElementById('eventSelect');
+    const classIdSelect = document.getElementById('classIdSelect');
     const classIdInput = document.getElementById('classIdInput');
     const card = document.querySelector('.card');
     const refreshButtons = Array.from(document.querySelectorAll('[data-refresh-btn]'));
     const actionButtons = Array.from(document.querySelectorAll('button'));
+    const COMPETITION_TYPE_TO_ID = { 'forkeppni': 1, 'a-urslit': 2, 'b-urslit': 3 };
     let eventState = null;
+    let classIdFromTests = {};
     let currentFilterValue = null;
     let busy = false;
     function headers() {
@@ -409,6 +416,63 @@ function renderControlHtml() {
           c.classId,
       );
     }
+    function getStateClassIdForCompetition(competitionType) {
+      const selectedEventId = getSelectedEventId() || currentFilterValue;
+      if (!selectedEventId || !eventState) return null;
+      const competitionId = COMPETITION_TYPE_TO_ID[competitionType];
+      const entry = eventState?.competitions?.[competitionId];
+      if (entry && Number(entry.eventId) === Number(selectedEventId) && entry.classId) {
+        return Number(entry.classId);
+      }
+      return null;
+    }
+    function getResolvedClassIdForCompetition(competitionType) {
+      const manual = Number.parseInt(String(classIdInput.value || '').trim(), 10);
+      if (Number.isInteger(manual) && manual > 0) return manual;
+      const selectedClassId = String(classIdSelect.value || '').trim();
+      if (selectedClassId) {
+        const [selectedType, selectedValue] = selectedClassId.split(':');
+        const parsedSelected = Number.parseInt(String(selectedValue || ''), 10);
+        if (
+          selectedType === competitionType &&
+          Number.isInteger(parsedSelected) &&
+          parsedSelected > 0
+        ) {
+          return parsedSelected;
+        }
+      }
+      const fromState = getStateClassIdForCompetition(competitionType);
+      if (fromState) return fromState;
+      const fromTests = classIdFromTests[competitionType]?.[0]?.classId;
+      return Number.isInteger(fromTests) && fromTests > 0 ? fromTests : null;
+    }
+    function renderClassIdSelect() {
+      const previous = String(classIdSelect.value || '');
+      classIdSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Sjálfvirkt val per keppni';
+      classIdSelect.appendChild(placeholder);
+
+      const orderedTypes = ['forkeppni', 'a-urslit', 'b-urslit'];
+      orderedTypes.forEach((competitionType) => {
+        const list = Array.isArray(classIdFromTests[competitionType])
+          ? classIdFromTests[competitionType]
+          : [];
+        list.forEach((item) => {
+          const option = document.createElement('option');
+          option.value = competitionType + ':' + item.classId;
+          const suffix = item.flokkurNafn
+            ? ' | ' + item.flokkurNafn + (item.keppnisgrein ? ' - ' + item.keppnisgrein : '')
+            : '';
+          option.textContent = competitionType + ' | ' + item.classId + suffix;
+          classIdSelect.appendChild(option);
+        });
+      });
+      if (previous && Array.from(classIdSelect.options).some((o) => o.value === previous)) {
+        classIdSelect.value = previous;
+      }
+    }
     function renderClassIdState() {
       if (!eventState) {
         classIdState.textContent = 'classId state: engin gögn.';
@@ -425,17 +489,26 @@ function renderControlHtml() {
         { id: 3, label: 'b-urslit' },
       ];
       const rows = competitions.map((item) => {
-        const c = eventState?.competitions?.[item.id];
-        const match = c && Number(c.eventId) === Number(selectedEventId);
-        const value = match && c.classId ? String(c.classId) : null;
-        return { label: item.label, value };
+        const fromState = getStateClassIdForCompetition(item.label);
+        const fromTests = classIdFromTests[item.label]?.[0]?.classId;
+        if (fromState) {
+          return { label: item.label, value: String(fromState), source: 'state' };
+        }
+        if (Number.isInteger(fromTests) && fromTests > 0) {
+          return {
+            label: item.label,
+            value: String(fromTests),
+            source: 'sportfengur',
+          };
+        }
+        return { label: item.label, value: null, source: null };
       });
       classIdState.innerHTML =
         '<div class="title">classId í state fyrir mót ' + selectedEventId + '</div>' +
         '<div class="stategrid">' +
         rows.map((row) => {
           const valueHtml = row.value
-            ? '<span class="stateval">' + row.value + '</span>'
+            ? '<span class="stateval">' + row.value + (row.source ? ' (' + row.source + ')' : '') + '</span>'
             : '<span class="stateval missing">ekki til</span>';
           return '<div class="statekey">' + row.label + '</div><div>' + valueHtml + '</div>';
         }).join('') +
@@ -448,10 +521,56 @@ function renderControlHtml() {
       return Number.isInteger(classId) && classId > 0;
     }
     function syncRefreshButtons() {
-      const enabled = hasStateContext() || hasManualContext();
       refreshButtons.forEach((btn) => {
-        btn.disabled = !enabled || busy;
+        const competitionType = btn.dataset.competitionType || '';
+        const hasCompetitionClassId =
+          getResolvedClassIdForCompetition(competitionType) != null;
+        btn.disabled = !hasCompetitionClassId || busy;
       });
+    }
+    async function loadClassIdsFromTests() {
+      const selectedEventId = getSelectedEventId() || currentFilterValue;
+      classIdFromTests = {
+        forkeppni: [],
+        'a-urslit': [],
+        'b-urslit': [],
+      };
+      if (!selectedEventId) {
+        renderClassIdSelect();
+        renderClassIdState();
+        syncRefreshButtons();
+        return;
+      }
+      const r = await fetch('/event/' + selectedEventId + '/tests');
+      const data = await r.json();
+      if (!r.ok) {
+        renderClassIdState();
+        syncRefreshButtons();
+        return;
+      }
+      const tests = Array.isArray(data?.res) ? data.res : [];
+      for (const test of tests) {
+        const compId = Number.parseInt(String(test?.keppni_numer), 10);
+        const classId = Number.parseInt(String(test?.flokkar_numer), 10);
+        if (!Number.isInteger(compId) || !Number.isInteger(classId) || classId <= 0) {
+          continue;
+        }
+        const type = Object.keys(COMPETITION_TYPE_TO_ID).find(
+          (key) => COMPETITION_TYPE_TO_ID[key] === compId,
+        );
+        if (!type) continue;
+        const exists = classIdFromTests[type].some((item) => item.classId === classId);
+        if (!exists) {
+          classIdFromTests[type].push({
+            classId,
+            flokkurNafn: String(test?.flokkur_nafn || '').trim(),
+            keppnisgrein: String(test?.keppnisgrein || '').trim(),
+          });
+        }
+      }
+      renderClassIdSelect();
+      renderClassIdState();
+      syncRefreshButtons();
     }
     async function getEventState() {
       const r = await fetch('/event/state');
@@ -491,6 +610,7 @@ function renderControlHtml() {
         show(data, r.ok);
         await loadEventOptions();
         await getEventState();
+        await loadClassIdsFromTests();
         await getWebhookLog();
       } finally {
         setBusy(false);
@@ -510,6 +630,7 @@ function renderControlHtml() {
         upsertSelectedEventOption(data?.eventIdFilter);
         show(data, r.ok);
         await getEventState();
+        await loadClassIdsFromTests();
         await getWebhookLog();
       } finally {
         setBusy(false);
@@ -522,8 +643,15 @@ function renderControlHtml() {
         const data = await r.json();
         setFilterStatus(data?.eventIdFilter);
         eventSelect.value = '';
+        classIdFromTests = {
+          forkeppni: [],
+          'a-urslit': [],
+          'b-urslit': [],
+        };
+        renderClassIdSelect();
         show(data, r.ok);
         await getEventState();
+        renderClassIdState();
         await getWebhookLog();
       } finally {
         setBusy(false);
@@ -535,8 +663,8 @@ function renderControlHtml() {
         const eventId = getSelectedEventId();
         const body = {};
         if (eventId) body.eventId = eventId;
-        const classId = Number.parseInt(String(classIdInput.value || '').trim(), 10);
-        if (Number.isInteger(classId) && classId > 0) {
+        const classId = getResolvedClassIdForCompetition(competitionType);
+        if (classId) {
           body.classId = classId;
         }
         const r = await fetch('/event/' + competitionType + '/refresh', {
@@ -558,7 +686,20 @@ function renderControlHtml() {
     }
     eventSelect.addEventListener('change', syncRefreshButtons);
     eventSelect.addEventListener('change', renderClassIdState);
+    eventSelect.addEventListener('change', () => {
+      loadClassIdsFromTests().catch(() => {
+        classIdFromTests = {
+          forkeppni: [],
+          'a-urslit': [],
+          'b-urslit': [],
+        };
+        renderClassIdSelect();
+        renderClassIdState();
+        syncRefreshButtons();
+      });
+    });
     classIdInput.addEventListener('input', syncRefreshButtons);
+    classIdSelect.addEventListener('change', syncRefreshButtons);
     syncRefreshButtons();
     getEventFilter().catch((e) => show(String(e), false));
     setInterval(() => {
