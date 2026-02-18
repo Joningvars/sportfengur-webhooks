@@ -133,6 +133,15 @@ function sortLeaderboard(entries, sort) {
   });
 }
 
+function chunkEntries(entries, size) {
+  const chunkSize = Number.isInteger(size) && size > 0 ? size : 7;
+  const groups = [];
+  for (let i = 0; i < entries.length; i += chunkSize) {
+    groups.push(entries.slice(i, i + chunkSize));
+  }
+  return groups;
+}
+
 function isRequestedEventAllowed(requestedEventId) {
   if (EVENT_ID_FILTER == null) {
     return true;
@@ -295,6 +304,128 @@ export function registerVmixRoutes(app) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/json');
     res.json(sorted);
+  });
+
+  app.get('/event/:eventId/:competitionType/groups', (req, res) => {
+    const resolved = resolveCompetitionRequest(req, res);
+    if (!resolved) return;
+    const { requestedEventId, competitionType, sort, sorted } = resolved;
+
+    const groupSize =
+      req.query.groupSize == null ? 7 : Number.parseInt(req.query.groupSize, 10);
+    if (!Number.isInteger(groupSize) || groupSize <= 0 || groupSize > 50) {
+      return res.status(400).json({
+        error: 'Invalid groupSize value',
+        supported: '1-50',
+      });
+    }
+
+    const vmixRows = sorted.map((entry) => ({
+      name: entry.Knapi || '',
+      horse: entry.Hestur || '',
+      Lid: entry.Lid || '',
+      Nr: entry.Nr || '',
+      einkunn: entry.E6 || '',
+    }));
+    const groups = chunkEntries(vmixRows, groupSize);
+    log.server.endpoint(
+      `/event/${requestedEventId}/${competitionType}/groups?sort=${sort}&groupSize=${groupSize}`,
+      sorted.length,
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(groups);
+  });
+
+  app.get('/event/:eventId/:competitionType/group', (req, res) => {
+    const resolved = resolveCompetitionRequest(req, res);
+    if (!resolved) return;
+    const { requestedEventId, competitionType, sort, sorted } = resolved;
+
+    const groupSize =
+      req.query.groupSize == null ? 7 : Number.parseInt(req.query.groupSize, 10);
+    if (!Number.isInteger(groupSize) || groupSize <= 0 || groupSize > 50) {
+      return res.status(400).json({
+        error: 'Invalid groupSize value',
+        supported: '1-50',
+      });
+    }
+
+    const group =
+      req.query.group == null ? 1 : Number.parseInt(req.query.group, 10);
+    if (!Number.isInteger(group) || group <= 0) {
+      return res.status(400).json({
+        error: 'Invalid group value',
+        supported: '>= 1',
+      });
+    }
+
+    const vmixRows = sorted.map((entry) => ({
+      name: entry.Knapi || '',
+      horse: entry.Hestur || '',
+      Lid: entry.Lid || '',
+      Nr: entry.Nr || '',
+      einkunn: entry.E6 || '',
+    }));
+    const groups = chunkEntries(vmixRows, groupSize);
+    const selectedGroup = groups[group - 1] || [];
+
+    log.server.endpoint(
+      `/event/${requestedEventId}/${competitionType}/group?sort=${sort}&groupSize=${groupSize}&group=${group}`,
+      selectedGroup.length,
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(selectedGroup);
+  });
+
+  app.get('/event/:eventId/:competitionType/groups/flat', (req, res) => {
+    const resolved = resolveCompetitionRequest(req, res);
+    if (!resolved) return;
+    const { requestedEventId, competitionType, sort, sorted } = resolved;
+
+    const groupSize =
+      req.query.groupSize == null ? 7 : Number.parseInt(req.query.groupSize, 10);
+    if (!Number.isInteger(groupSize) || groupSize <= 0 || groupSize > 50) {
+      return res.status(400).json({
+        error: 'Invalid groupSize value',
+        supported: '1-50',
+      });
+    }
+
+    const vmixRows = sorted.map((entry) => ({
+      name: entry.Knapi || '',
+      horse: entry.Hestur || '',
+      Lid: entry.Lid || '',
+      Nr: entry.Nr || '',
+      einkunn: entry.E6 || '',
+    }));
+
+    const grouped = chunkEntries(vmixRows, groupSize);
+    const flattened = grouped.map((groupRows, groupIndex) => {
+      const row = { group: groupIndex + 1 };
+      for (let i = 0; i < groupSize; i += 1) {
+        const contestant = groupRows[i];
+        const n = i + 1;
+        row[`name${n}`] = contestant?.name || '';
+        row[`horse${n}`] = contestant?.horse || '';
+        row[`Lid${n}`] = contestant?.Lid || '';
+        row[`Nr${n}`] = contestant?.Nr || '';
+        row[`einkunn${n}`] = contestant?.einkunn || '';
+      }
+      return row;
+    });
+
+    log.server.endpoint(
+      `/event/${requestedEventId}/${competitionType}/groups/flat?sort=${sort}&groupSize=${groupSize}`,
+      flattened.length,
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json(flattened);
   });
 
   app.get('/event/:eventId/:competitionType/csv', (req, res) => {

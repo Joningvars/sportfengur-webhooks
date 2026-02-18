@@ -223,6 +223,202 @@ export const openApiSpec = {
         },
       },
     },
+    '/event/{eventId}/{competitionType}/groups': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Competition Leaderboard Groups',
+        description:
+          'Returns leaderboard entries grouped into chunks (default 7) for start-screen display.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+          {
+            name: 'competitionType',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['forkeppni', 'a-urslit', 'b-urslit'],
+            },
+          },
+          {
+            name: 'sort',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['start', 'rank'],
+              default: 'start',
+            },
+          },
+          {
+            name: 'groupSize',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 50,
+              default: 7,
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Grouped leaderboard entries',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GroupedLeaderboardResponse' },
+              },
+            },
+          },
+          400: { description: 'Invalid event ID, sort value, or groupSize' },
+          404: {
+            description: 'Unknown competition type or no data available for this event',
+          },
+        },
+      },
+    },
+    '/event/{eventId}/{competitionType}/group': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Competition Leaderboard Group (Flat for vMix)',
+        description:
+          'Returns a single contestant group as a flat array (default group=1, groupSize=7), useful for vMix data sources.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+          {
+            name: 'competitionType',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['forkeppni', 'a-urslit', 'b-urslit'],
+            },
+          },
+          {
+            name: 'sort',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['start', 'rank'],
+              default: 'start',
+            },
+          },
+          {
+            name: 'groupSize',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 50,
+              default: 7,
+            },
+          },
+          {
+            name: 'group',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Single group rows as flat array',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/GroupedContestant' },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid event ID, sort value, groupSize, or group' },
+          404: {
+            description: 'Unknown competition type or no data available for this event',
+          },
+        },
+      },
+    },
+    '/event/{eventId}/{competitionType}/groups/flat': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Competition Leaderboard Groups (Flat Rows)',
+        description:
+          'Returns one row per group with indexed contestant fields (name1..nameN, horse1..horseN, Lid1..LidN, Nr1..NrN, einkunn1..einkunnN).',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+          {
+            name: 'competitionType',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['forkeppni', 'a-urslit', 'b-urslit'],
+            },
+          },
+          {
+            name: 'sort',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['start', 'rank'],
+              default: 'start',
+            },
+          },
+          {
+            name: 'groupSize',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 50,
+              default: 7,
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Flat contestant rows with group number',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/GroupedContestantFlatRow' },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid event ID, sort value, or groupSize' },
+          404: {
+            description: 'Unknown competition type or no data available for this event',
+          },
+        },
+      },
+    },
     '/event/{eventId}/{competitionType}/csv': {
       get: {
         tags: ['Competition Data'],
@@ -591,6 +787,43 @@ export const openApiSpec = {
           E6: { type: 'string' },
         },
         additionalProperties: true,
+      },
+      GroupedLeaderboardResponse: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'integer' },
+          competitionType: { type: 'string' },
+          sort: { type: 'string', enum: ['start', 'rank'] },
+          groupSize: { type: 'integer', example: 7 },
+          total: { type: 'integer', example: 21 },
+          groups: {
+            type: 'array',
+            items: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/GroupedContestant' },
+            },
+          },
+        },
+      },
+      GroupedContestant: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', example: 'Jón Ársæll Bergmann' },
+          horse: { type: 'string', example: 'Díana frá Bakkakoti' },
+          Lid: { type: 'string', example: '' },
+          Nr: { type: 'string', example: '5' },
+          einkunn: { type: 'string', example: '8.50' },
+        },
+      },
+      GroupedContestantFlatRow: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', example: 'Jón Ársæll Bergmann' },
+          horse: { type: 'string', example: 'Díana frá Bakkakoti' },
+          Lid: { type: 'string', example: '' },
+          Nr: { type: 'string', example: '5' },
+          group: { type: 'integer', example: 1 },
+        },
       },
     },
   },
