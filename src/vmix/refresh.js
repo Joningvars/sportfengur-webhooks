@@ -51,6 +51,25 @@ export function _resetRefreshState() {
   pendingRefreshTimestamp = null;
 }
 
+export async function refreshCompetitionNow(
+  eventId,
+  classId,
+  competitionId,
+  forceRefresh = true,
+) {
+  log.vmix.fetching(classId, competitionId, forceRefresh);
+  const leaderboardData = await fetchLeaderboard(
+    eventId,
+    classId,
+    competitionId,
+    forceRefresh,
+  );
+  const normalizedLeaderboard = normalizeLeaderboard(leaderboardData);
+  log.vmix.normalized(normalizedLeaderboard.length);
+  updateState(normalizedLeaderboard, eventId, classId, competitionId);
+  return normalizedLeaderboard;
+}
+
 async function executeRefresh() {
   if (refreshInProgress) {
     log.vmix.skipped();
@@ -97,19 +116,5 @@ async function executeRefresh() {
 
 async function refreshWithTimeout() {
   const { eventId, classId, competitionId, forceRefresh } = competitionContext;
-
-  log.vmix.fetching(classId, competitionId, forceRefresh);
-
-  const leaderboardData = await fetchLeaderboard(
-    eventId,
-    classId,
-    competitionId,
-    forceRefresh,
-  );
-
-  const normalizedLeaderboard = normalizeLeaderboard(leaderboardData);
-
-  log.vmix.normalized(normalizedLeaderboard.length);
-
-  updateState(normalizedLeaderboard, eventId, classId, competitionId);
+  await refreshCompetitionNow(eventId, classId, competitionId, forceRefresh);
 }

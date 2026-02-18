@@ -6,8 +6,11 @@ import {
   registerTestRoute,
   registerWebhookRoutes,
   registerCacheRoutes,
+  registerConfigRoutes,
+  registerControlWebhookRoutes,
 } from './src/webhooks.js';
 import { registerDocs } from './src/docs.js';
+import { registerControlAuthRoutes } from './src/control-auth.js';
 import { registerVmixRoutes } from './src/vmix/server.js';
 
 const app = express();
@@ -19,7 +22,10 @@ registerWebhookRoutes(app);
 registerTestRoute(app);
 registerHealthRoute(app);
 registerCacheRoutes(app);
+registerConfigRoutes(app);
+registerControlWebhookRoutes(app);
 registerDocs(app);
+registerControlAuthRoutes(app);
 registerVmixRoutes(app);
 
 const port = process.env.PORT || 3000;

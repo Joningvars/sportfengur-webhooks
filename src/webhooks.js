@@ -2,12 +2,14 @@ import {
   WEBHOOK_SECRET,
   SPORTFENGUR_LOCALE,
   DEDUPE_TTL_MS,
-  EVENT_ID_FILTER,
+  getEventIdFilter,
+  setEventIdFilter,
 } from './config.js';
 import { apiGetWithRetry } from './sportfengur.js';
 import { scheduleRefresh, setCompetitionContext } from './vmix/refresh.js';
 import { clearStartingListCache } from './vmix/vendor.js';
 import { log } from './logger.js';
+import { requireControlSession } from './control-auth.js';
 
 const EVENT_DEFINITIONS = {
   event_einkunn_saeti: ['eventId', 'classId', 'competitionId'],
@@ -25,6 +27,18 @@ let lastWebhookAt = null;
 let lastWebhookProcessedAt = null;
 let lastError = null;
 let currentPayload = null;
+const webhookHistory = [];
+const WEBHOOK_HISTORY_LIMIT = 200;
+
+function pushWebhookHistory(entry) {
+  webhookHistory.unshift({
+    at: new Date().toISOString(),
+    ...entry,
+  });
+  if (webhookHistory.length > WEBHOOK_HISTORY_LIMIT) {
+    webhookHistory.length = WEBHOOK_HISTORY_LIMIT;
+  }
+}
 
 function requireWebhookSecret(req, res) {
   const secretHeader = req.header('x-webhook-secret') || '';
@@ -78,10 +92,11 @@ function dedupeKey(eventName, payload) {
 }
 
 function isAllowedEventId(payload) {
-  if (EVENT_ID_FILTER == null) {
+  const eventIdFilter = getEventIdFilter();
+  if (eventIdFilter == null) {
     return true;
   }
-  return Number(payload.eventId) === EVENT_ID_FILTER;
+  return Number(payload.eventId) === eventIdFilter;
 }
 
 async function resolveCompetitionId(payload) {
@@ -129,6 +144,14 @@ async function handleWebhook(req, res, eventName) {
   pruneDedupeCache();
   if (dedupeCache.has(key)) {
     log.webhook.duplicate(key);
+    pushWebhookHistory({
+      status: 'duplicate',
+      eventName,
+      key,
+      eventId: payload.eventId ?? null,
+      classId: payload.classId ?? null,
+      competitionId: payload.competitionId ?? null,
+    });
     return;
   }
   dedupeCache.set(key, Date.now());
@@ -138,7 +161,14 @@ async function handleWebhook(req, res, eventName) {
     log.webhook.processing(eventName);
 
     if (!isAllowedEventId(payload)) {
-      log.webhook.filtered(payload.eventId ?? 'N/A', EVENT_ID_FILTER);
+      log.webhook.filtered(payload.eventId ?? 'N/A', getEventIdFilter());
+      pushWebhookHistory({
+        status: 'filtered',
+        eventName,
+        eventId: payload.eventId ?? null,
+        classId: payload.classId ?? null,
+        competitionId: payload.competitionId ?? null,
+      });
       return;
     }
 
@@ -176,9 +206,25 @@ async function handleWebhook(req, res, eventName) {
 
     lastWebhookProcessedAt = new Date().toISOString();
     log.webhook.completed(eventName, Date.now() - start);
+    pushWebhookHistory({
+      status: 'processed',
+      eventName,
+      eventId: payload.eventId ?? null,
+      classId: payload.classId ?? null,
+      competitionId: payload.competitionId ?? null,
+      durationMs: Date.now() - start,
+    });
   } catch (error) {
     lastError = `${new Date().toISOString()} ${eventName} ${error.message}`;
     log.error(`webhook ${eventName}`, error);
+    pushWebhookHistory({
+      status: 'error',
+      eventName,
+      eventId: payload.eventId ?? null,
+      classId: payload.classId ?? null,
+      competitionId: payload.competitionId ?? null,
+      message: error.message,
+    });
   }
 }
 
@@ -226,6 +272,51 @@ export function registerCacheRoutes(app) {
   app.post('/cache/raslisti/clear', (req, res) => {
     clearStartingListCache();
     res.send('Cache hreinsað');
+  });
+}
+
+export function registerConfigRoutes(app) {
+  app.get('/config/event-filter', (req, res) => {
+    if (!requireControlSession(req, res, true)) return;
+    res.json({ eventIdFilter: getEventIdFilter() });
+  });
+
+  app.post('/config/event-filter', (req, res) => {
+    if (!requireControlSession(req, res, true)) return;
+    const value =
+      req.body?.eventIdFilter === undefined ? req.body?.eventId : req.body?.eventIdFilter;
+
+    if (value === undefined) {
+      return res.status(400).json({
+        error: 'Missing eventIdFilter (or eventId) in request body',
+      });
+    }
+
+    try {
+      if (value === null || value === '') {
+        setEventIdFilter(null);
+      } else {
+        setEventIdFilter(value);
+      }
+      return res.json({ eventIdFilter: getEventIdFilter() });
+    } catch (error) {
+      return res.status(400).json({
+        error: 'Invalid eventIdFilter',
+        message: error.message,
+      });
+    }
+  });
+}
+
+export function registerControlWebhookRoutes(app) {
+  app.get('/control/webhooks', (req, res) => {
+    if (!requireControlSession(req, res, true)) return;
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.json({
+      total: webhookHistory.length,
+      items: webhookHistory,
+    });
   });
 }
 

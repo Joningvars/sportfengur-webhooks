@@ -107,6 +107,62 @@ export const openApiSpec = {
         },
       },
     },
+    '/config/event-filter': {
+      get: {
+        tags: ['System'],
+        summary: 'Get Event Filter',
+        description: 'Returns active runtime eventId filter (or null).',
+        responses: {
+          200: {
+            description: 'Current event filter',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EventFilterConfig' },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['System'],
+        summary: 'Set Event Filter',
+        description:
+          'Sets runtime eventId filter used to gate incoming webhooks and event-scoped API routes. Send null to clear filter.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  eventIdFilter: {
+                    type: 'integer',
+                    nullable: true,
+                    example: 70617,
+                  },
+                  eventId: {
+                    type: 'integer',
+                    nullable: true,
+                    example: 70617,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Updated event filter',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EventFilterConfig' },
+              },
+            },
+          },
+          400: { description: 'Invalid request body or event filter value' },
+        },
+      },
+    },
     '/current': {
       get: {
         tags: ['System'],
@@ -140,7 +196,23 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/current': {
+    '/control': {
+      get: {
+        tags: ['System'],
+        summary: 'Graphics Control UI',
+        responses: {
+          200: {
+            description: 'Control panel HTML',
+            content: {
+              'text/html': {
+                schema: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/event/current': {
       get: {
         tags: ['Competition Data'],
         summary: 'Current Leaderboard',
@@ -171,7 +243,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/{competitionType}': {
+    '/event/{competitionType}': {
       get: {
         tags: ['Competition Data'],
         summary: 'Competition Leaderboard',
@@ -223,7 +295,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/{competitionType}/groups': {
+    '/event/{competitionType}/groups': {
       get: {
         tags: ['Competition Data'],
         summary: 'Competition Leaderboard Groups',
@@ -289,7 +361,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/{competitionType}/group': {
+    '/event/{competitionType}/group': {
       get: {
         tags: ['Competition Data'],
         summary: 'Competition Leaderboard Group (Flat for vMix)',
@@ -362,7 +434,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/{competitionType}/groups/flat': {
+    '/event/{competitionType}/groups/flat': {
       get: {
         tags: ['Competition Data'],
         summary: 'Competition Leaderboard Groups (Flat Rows)',
@@ -425,7 +497,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/{competitionType}/csv': {
+    '/event/{competitionType}/csv': {
       get: {
         tags: ['Competition Data'],
         summary: 'Competition Leaderboard CSV',
@@ -474,7 +546,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/{competitionType}/results': {
+    '/event/{competitionType}/results': {
       get: {
         tags: ['Competition Data'],
         summary: 'Competition Gait Results',
@@ -526,7 +598,52 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/leaderboards.zip': {
+    '/event/{competitionType}/refresh': {
+      post: {
+        tags: ['Competition Data'],
+        summary: 'Manual Competition Refresh',
+        description:
+          'Manually fetches starting list/results from Sportfengur and updates in-memory state for the selected competition type.',
+        parameters: [
+          {
+            name: 'competitionType',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['forkeppni', 'a-urslit', 'b-urslit'],
+            },
+          },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  eventId: { type: 'integer' },
+                  classId: { type: 'integer' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Refresh completed',
+            content: {
+              'application/json': {
+                schema: { type: 'object', additionalProperties: true },
+              },
+            },
+          },
+          400: { description: 'Invalid input' },
+          404: { description: 'Unknown competition type' },
+        },
+      },
+    },
+    '/event/leaderboards.zip': {
       get: {
         tags: ['Competition Data'],
         summary: 'All Leaderboards ZIP',
@@ -557,7 +674,7 @@ export const openApiSpec = {
         },
       },
     },
-    '/event/{eventId}/csv.zip': {
+    '/event/csv.zip': {
       get: {
         tags: ['Competition Data'],
         summary: 'All Leaderboards CSV ZIP',
@@ -819,6 +936,12 @@ export const openApiSpec = {
             nullable: true,
           },
           lastError: { type: 'string', nullable: true },
+        },
+      },
+      EventFilterConfig: {
+        type: 'object',
+        properties: {
+          eventIdFilter: { type: 'integer', nullable: true, example: 70617 },
         },
       },
       LeaderboardEntry: {
