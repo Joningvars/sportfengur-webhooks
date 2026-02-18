@@ -34,6 +34,8 @@ http://localhost:3000/docs
   - `sort`: `start` (sjálfgefið) eða `rank`
 - `GET /event/{eventId}/{competitionType}/csv` skilar sama leaderboard sem CSV:
   - `sort`: `start` (sjálfgefið) eða `rank`
+- `GET /event/{eventId}/{competitionType}/results` skilar gangtegundum (adal + undirliðir) eins og áður:
+  - `sort`: `rank` (sjálfgefið) eða `start`
 - `GET /event/{eventId}/leaderboards.zip` skilar ZIP með mörgum CSV skrám:
   - `current-{eventId}.csv`
   - `{competitionType}-{eventId}-start.csv`
@@ -43,6 +45,8 @@ http://localhost:3000/docs
   - `/event/70617/b-urslit?sort=rank`
   - `/event/70617/a-urslit/csv`
   - `/event/70617/a-urslit/csv?sort=rank`
+  - `/event/70617/a-urslit/results`
+  - `/event/70617/a-urslit/results?sort=start`
   - `/event/70617/leaderboards.zip`
 
 ## 6) Handvirk einkunnaköll (valfrjálst)

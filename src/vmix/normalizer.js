@@ -14,17 +14,20 @@ function calculateAldur(faedingarnumer) {
   return new Date().getFullYear() - year;
 }
 
-function roundScore(value) {
+function roundScore(value, fixedTwoDecimals = false) {
   if (value === null || value === undefined || value === '') return '';
 
-  let strValue = String(value).replace(',', '.');
+  const strValue = String(value).trim().replace(',', '.');
+  if (strValue === '') return '';
 
   const num = Number(strValue);
   if (!Number.isFinite(num)) return '';
 
-  const truncated = Math.floor(num * 100) / 100;
-
-  return truncated.toFixed(2).replace(/\.?0+$/, '');
+  const rounded = Math.round(num * 100) / 100;
+  if (fixedTwoDecimals) {
+    return rounded.toFixed(2);
+  }
+  return String(rounded);
 }
 
 function sanitizeGaitKey(gaitType) {
@@ -40,6 +43,18 @@ function sanitizeGaitKey(gaitType) {
     .replace(/[ð]/g, 'd')
     .replace(/[þ]/g, 'th')
     .replace(/[æ]/g, 'ae');
+}
+
+const COLOR_HEX_BY_RAS_COLOR = {
+  '1 - Rauður': '#FF0000',
+  '2 - Gulur': '#FFFF00',
+  '3 - Grænn': '#008000',
+  '4 - Blár': '#0000FF',
+  '5 - Hvítur': '#FFFFFF',
+};
+
+function getColorHex(liturRas) {
+  return COLOR_HEX_BY_RAS_COLOR[String(liturRas || '').trim()] || '';
 }
 
 function extractGaitScores(judges) {
@@ -68,7 +83,7 @@ function extractGaitScores(judges) {
   if (adalScores.length > 0) {
     const sum = adalScores.reduce((a, b) => a + Number(b), 0);
     const avg = sum / adalScores.length;
-    gaitScores.adal.E6 = roundScore(avg);
+    gaitScores.adal.E6 = roundScore(avg, true);
   } else {
     gaitScores.adal.E6 = '';
   }
@@ -115,7 +130,7 @@ function extractGaitScores(judges) {
     if (scores.length > 0) {
       const sum = scores.reduce((a, b) => a + b, 0);
       const avg = sum / scores.length;
-      gaitScores[gaitKey].E6 = roundScore(avg);
+      gaitScores[gaitKey].E6 = roundScore(avg, true);
     } else {
       gaitScores[gaitKey].E6 = '';
       delete gaitScores[gaitKey];
@@ -180,6 +195,17 @@ export function normalizeCurrent(apiResponse) {
     .map((j) => roundScore(j?.domari_adaleinkunn));
 
   const gaitScores = extractGaitScores(judges);
+  const e1 = judgeScores[0] || '';
+  const e2 = judgeScores[1] || '';
+  const e3 = judgeScores[2] || '';
+  const e4 = judgeScores[3] || '';
+  const e5 = judgeScores[4] || '';
+  const e6 = roundScore(apiResponse.keppandi_medaleinkunn, true);
+
+  const liturRas =
+    apiResponse.rodun_litur_numer != null && apiResponse.rodun_litur
+      ? `${apiResponse.rodun_litur_numer} - ${apiResponse.rodun_litur}`
+      : String(apiResponse.rodun_litur || '');
 
   return {
     Nr: String(apiResponse.vallarnumer || ''),
@@ -187,10 +213,8 @@ export function normalizeCurrent(apiResponse) {
     Holl: String(apiResponse.holl || ''),
     Hond: String(apiResponse.hond || ''),
     Knapi: riderName,
-    LiturRas:
-      apiResponse.rodun_litur_numer != null && apiResponse.rodun_litur
-        ? `${apiResponse.rodun_litur_numer} - ${apiResponse.rodun_litur}`
-        : String(apiResponse.rodun_litur || ''),
+    LiturRas: liturRas,
+    colorHex: getColorHex(liturRas),
     FelagKnapa: String(apiResponse.adildarfelag_knapa || ''),
     Hestur: horseName,
     Litur: String(apiResponse.hross_litur || ''),
@@ -198,13 +222,21 @@ export function normalizeCurrent(apiResponse) {
     FelagEiganda: String(apiResponse.adildarfelag_eiganda || ''),
     Lid: '',
     NafnBIG: riderName ? riderName.toUpperCase() : '',
-    E1: judgeScores[0] || '',
-    E2: judgeScores[1] || '',
-    E3: judgeScores[2] || '',
-    E4: judgeScores[3] || '',
-    E5: judgeScores[4] || '',
-    E6: roundScore(apiResponse.keppandi_medaleinkunn),
+    E1: e1,
+    E2: e2,
+    E3: e3,
+    E4: e4,
+    E5: e5,
+    E6: e6,
     ...gaitScores,
+    adal: {
+      E1: e1,
+      E2: e2,
+      E3: e3,
+      E4: e4,
+      E5: e5,
+      E6: e6,
+    },
     timestamp: new Date().toISOString(),
   };
 }
@@ -238,6 +270,17 @@ export function normalizeLeaderboard(apiResponse) {
         .map((j) => roundScore(j?.domari_adaleinkunn));
 
       const gaitScores = extractGaitScores(judges);
+      const e1 = judgeScores[0] || '';
+      const e2 = judgeScores[1] || '';
+      const e3 = judgeScores[2] || '';
+      const e4 = judgeScores[3] || '';
+      const e5 = judgeScores[4] || '';
+      const e6 = roundScore(entry.keppandi_medaleinkunn, true);
+
+      const liturRas =
+        entry.rodun_litur_numer != null && entry.rodun_litur
+          ? `${entry.rodun_litur_numer} - ${entry.rodun_litur}`
+          : String(entry.rodun_litur || '');
 
       return {
         Nr: String(entry.vallarnumer || ''),
@@ -245,10 +288,8 @@ export function normalizeLeaderboard(apiResponse) {
         Holl: String(entry.holl || ''),
         Hond: String(entry.hond || ''),
         Knapi: riderName,
-        LiturRas:
-          entry.rodun_litur_numer != null && entry.rodun_litur
-            ? `${entry.rodun_litur_numer} - ${entry.rodun_litur}`
-            : String(entry.rodun_litur || ''),
+        LiturRas: liturRas,
+        colorHex: getColorHex(liturRas),
         FelagKnapa: String(entry.adildarfelag_knapa || ''),
         Hestur: horseName,
         Litur: String(entry.hross_litur || ''),
@@ -256,13 +297,21 @@ export function normalizeLeaderboard(apiResponse) {
         FelagEiganda: String(entry.adildarfelag_eiganda || ''),
         Lid: '',
         NafnBIG: riderName ? riderName.toUpperCase() : '',
-        E1: judgeScores[0] || '',
-        E2: judgeScores[1] || '',
-        E3: judgeScores[2] || '',
-        E4: judgeScores[3] || '',
-        E5: judgeScores[4] || '',
-        E6: roundScore(entry.keppandi_medaleinkunn),
+        E1: e1,
+        E2: e2,
+        E3: e3,
+        E4: e4,
+        E5: e5,
+        E6: e6,
         ...gaitScores,
+        adal: {
+          E1: e1,
+          E2: e2,
+          E3: e3,
+          E4: e4,
+          E5: e5,
+          E6: e6,
+        },
       };
     })
     .sort((a, b) => {
@@ -280,6 +329,7 @@ export function leaderboardToCsv(leaderboard) {
     'Hond',
     'Knapi',
     'LiturRas',
+    'colorHex',
     'FelagKnapa',
     'Hestur',
     'Litur',
@@ -312,6 +362,7 @@ export function leaderboardToCsv(leaderboard) {
     'Hond',
     'Knapi',
     'LiturRas',
+    'colorHex',
     'FelagKnapa',
     'Hestur',
     'Litur',
@@ -379,6 +430,7 @@ export function leaderboardToCsv(leaderboard) {
       entry.Hond || '',
       escapeCsvField(entry.Knapi || ''),
       escapeCsvField(entry.LiturRas || ''),
+      entry.colorHex || '',
       escapeCsvField(entry.FelagKnapa || ''),
       escapeCsvField(entry.Hestur || ''),
       escapeCsvField(entry.Litur || ''),

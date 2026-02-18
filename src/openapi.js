@@ -272,6 +272,58 @@ export const openApiSpec = {
         },
       },
     },
+    '/event/{eventId}/{competitionType}/results': {
+      get: {
+        tags: ['Competition Data'],
+        summary: 'Competition Gait Results',
+        description:
+          'Returns flat gait-result rows grouped by gangtegund. sort=start (default) orders each gangtegund by start number (Nr). sort=rank orders each gangtegund by highest E6 first; pos is assigned per gangtegund.',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+          {
+            name: 'competitionType',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['forkeppni', 'a-urslit', 'b-urslit'],
+            },
+          },
+          {
+            name: 'sort',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['start', 'rank'],
+              default: 'start',
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Flat gait result rows',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/GangtegundResultRow' },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid event ID or sort value' },
+          404: {
+            description: 'Unknown competition type or no data available for this event',
+          },
+        },
+      },
+    },
     '/event/{eventId}/leaderboards.zip': {
       get: {
         tags: ['Competition Data'],
@@ -303,21 +355,34 @@ export const openApiSpec = {
         },
       },
     },
-    '/leaderboard.csv': {
+    '/event/{eventId}/csv.zip': {
       get: {
         tags: ['Competition Data'],
-        summary: 'Current Leaderboard CSV',
+        summary: 'All Leaderboards CSV ZIP',
         description:
-          'Returns CSV for the currently active competition state only.',
+          'Alias for /event/{eventId}/leaderboards.zip. Returns a ZIP file with current and per-competition CSV exports (start and rank).',
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer' },
+          },
+        ],
         responses: {
           200: {
-            description: 'CSV output',
+            description: 'ZIP archive',
             content: {
-              'text/csv': {
-                schema: { type: 'string' },
+              'application/zip': {
+                schema: {
+                  type: 'string',
+                  format: 'binary',
+                },
               },
             },
           },
+          400: { description: 'Invalid event ID' },
+          404: { description: 'No data available for this event' },
         },
       },
     },
@@ -496,6 +561,7 @@ export const openApiSpec = {
           Holl: { type: 'string' },
           Hond: { type: 'string' },
           Knapi: { type: 'string' },
+          colorHex: { type: 'string', example: '#FF0000' },
           Hestur: { type: 'string' },
           E1: { type: 'string' },
           E2: { type: 'string' },
@@ -504,6 +570,25 @@ export const openApiSpec = {
           E5: { type: 'string' },
           E6: { type: 'string' },
           timestamp: { type: 'string', format: 'date-time' },
+        },
+        additionalProperties: true,
+      },
+      GangtegundResultRow: {
+        type: 'object',
+        properties: {
+          gangtegundKey: { type: 'string' },
+          title: { type: 'string' },
+          name: { type: 'string' },
+          horse: { type: 'string' },
+          color: { type: 'string' },
+          colorHex: { type: 'string', example: '#FF0000' },
+          pos: { type: 'string' },
+          E1: { type: 'string' },
+          E2: { type: 'string' },
+          E3: { type: 'string' },
+          E4: { type: 'string' },
+          E5: { type: 'string' },
+          E6: { type: 'string' },
         },
         additionalProperties: true,
       },

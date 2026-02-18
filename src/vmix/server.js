@@ -16,6 +16,114 @@ const COMPETITION_TYPE_TO_ID = {
   'b-urslit': 3,
 };
 
+const COLOR_HEX_BY_RAS_COLOR = {
+  '1 - Rauður': '#FF0000',
+  '2 - Gulur': '#FFFF00',
+  '3 - Grænn': '#008000',
+  '4 - Blár': '#0000FF',
+  '5 - Hvítur': '#FFFFFF',
+};
+
+function getColorHex(color) {
+  return COLOR_HEX_BY_RAS_COLOR[String(color || '').trim()] || '';
+}
+
+function withUtf8Bom(text) {
+  return `\uFEFF${text}`;
+}
+
+function extractGangtegundResults(currentState, sort = 'start') {
+  const rowsByGait = new Map();
+  const excludeKeys = new Set([
+    'Nr',
+    'Saeti',
+    'Holl',
+    'Hond',
+    'Knapi',
+    'LiturRas',
+    'FelagKnapa',
+    'Hestur',
+    'Litur',
+    'Aldur',
+    'FelagEiganda',
+    'Lid',
+    'NafnBIG',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'E5',
+    'E6',
+    'adal',
+    'timestamp',
+  ]);
+
+  currentState.forEach((rider) => {
+    for (const [key, value] of Object.entries(rider)) {
+      if (excludeKeys.has(key) || typeof value !== 'object') continue;
+      const scores = {};
+      for (const [scoreKey, scoreValue] of Object.entries(value)) {
+        if (scoreKey !== '_title') {
+          scores[scoreKey] = scoreValue;
+        }
+      }
+      const row = {
+        gangtegundKey: key,
+        title: value._title || key,
+        name: rider.Knapi,
+        horse: rider.Hestur,
+        color: rider.LiturRas || '',
+        colorHex: getColorHex(rider.LiturRas),
+        Nr: rider.Nr,
+        Saeti: rider.Saeti,
+        pos: '',
+        ...scores,
+      };
+      if (!rowsByGait.has(key)) {
+        rowsByGait.set(key, []);
+      }
+      rowsByGait.get(key).push(row);
+    }
+  });
+
+  const gaitKeys = [...rowsByGait.keys()].sort((a, b) => a.localeCompare(b));
+  const output = [];
+
+  for (const gaitKey of gaitKeys) {
+    const rows = rowsByGait.get(gaitKey) || [];
+    rows.sort((a, b) => {
+      const valueA =
+        sort === 'rank'
+          ? Number(String(a.E6 || '').replace(',', '.'))
+          : Number(String(a.Nr || '').replace(',', '.'));
+      const valueB =
+        sort === 'rank'
+          ? Number(String(b.E6 || '').replace(',', '.'))
+          : Number(String(b.Nr || '').replace(',', '.'));
+      const hasA = Number.isFinite(valueA);
+      const hasB = Number.isFinite(valueB);
+
+      if (hasA && hasB && valueA !== valueB) {
+        return sort === 'rank' ? valueB - valueA : valueA - valueB;
+      }
+      if (hasA !== hasB) return hasA ? -1 : 1;
+
+      const nameA = String(a.name || '');
+      const nameB = String(b.name || '');
+      return nameA.localeCompare(nameB);
+    });
+
+    rows.forEach((row, index) => {
+      row.pos = String(index + 1);
+      delete row.Nr;
+      delete row.Saeti;
+      output.push(row);
+    });
+  }
+
+  return output;
+}
+
 function sortLeaderboard(entries, sort) {
   const mode = sort === 'rank' ? 'rank' : 'start';
   return [...entries].sort((a, b) => {
@@ -45,7 +153,7 @@ function resolveEventIdRequest(req, res) {
   return requestedEventId;
 }
 
-function resolveCompetitionRequest(req, res) {
+function resolveCompetitionScope(req, res) {
   const requestedEventId = resolveEventIdRequest(req, res);
   if (requestedEventId == null) return null;
 
@@ -73,7 +181,15 @@ function resolveCompetitionRequest(req, res) {
     return null;
   }
 
-  const sort = req.query.sort == null ? 'start' : String(req.query.sort);
+  return { requestedEventId, competitionType, competitionId };
+}
+
+function resolveCompetitionRequest(req, res, defaultSort = 'start') {
+  const scope = resolveCompetitionScope(req, res);
+  if (!scope) return null;
+  const { requestedEventId, competitionType, competitionId } = scope;
+
+  const sort = req.query.sort == null ? defaultSort : String(req.query.sort);
   if (sort !== 'start' && sort !== 'rank') {
     res.status(400).json({
       error: 'Invalid sort value',
@@ -110,7 +226,7 @@ export function registerVmixRoutes(app) {
     res.json(currentState);
   });
 
-  app.get('/event/:eventId/leaderboards.zip', async (req, res) => {
+  const sendLeaderboardsZip = async (req, res) => {
     const requestedEventId = resolveEventIdRequest(req, res);
     if (requestedEventId == null) return;
 
@@ -123,7 +239,7 @@ export function registerVmixRoutes(app) {
         : [];
     zip.file(
       `current-${requestedEventId}.csv`,
-      leaderboardToCsv(currentState),
+      withUtf8Bom(leaderboardToCsv(currentState)),
     );
 
     for (const [competitionType, competitionId] of Object.entries(
@@ -140,11 +256,11 @@ export function registerVmixRoutes(app) {
 
       zip.file(
         `${competitionType}-${requestedEventId}-start.csv`,
-        leaderboardToCsv(startRows),
+        withUtf8Bom(leaderboardToCsv(startRows)),
       );
       zip.file(
         `${competitionType}-${requestedEventId}-rank.csv`,
-        leaderboardToCsv(rankRows),
+        withUtf8Bom(leaderboardToCsv(rankRows)),
       );
     }
 
@@ -161,7 +277,10 @@ export function registerVmixRoutes(app) {
       `attachment; filename="leaderboards-${requestedEventId}.zip"`,
     );
     res.send(archive);
-  });
+  };
+
+  app.get('/event/:eventId/leaderboards.zip', sendLeaderboardsZip);
+  app.get('/event/:eventId/csv.zip', sendLeaderboardsZip);
 
   app.get('/event/:eventId/:competitionType', (req, res) => {
     const resolved = resolveCompetitionRequest(req, res);
@@ -183,14 +302,14 @@ export function registerVmixRoutes(app) {
     if (!resolved) return;
     const { requestedEventId, competitionType, sort, sorted } = resolved;
 
-    const csv = leaderboardToCsv(sorted);
+    const csv = withUtf8Bom(leaderboardToCsv(sorted));
     log.server.endpoint(
       `/event/${requestedEventId}/${competitionType}/csv?sort=${sort}`,
       sorted.length,
     );
 
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${competitionType}-${requestedEventId}-${sort}.csv"`,
@@ -198,13 +317,20 @@ export function registerVmixRoutes(app) {
     res.send(csv);
   });
 
-  app.get('/leaderboard.csv', (req, res) => {
-    const leaderboardState = getLeaderboardState();
-    const csv = leaderboardToCsv(leaderboardState);
+  app.get('/event/:eventId/:competitionType/results', (req, res) => {
+    const resolved = resolveCompetitionRequest(req, res, 'start');
+    if (!resolved) return;
+    const { requestedEventId, competitionType, sort, sorted } = resolved;
+    const results = extractGangtegundResults(sorted, sort);
+
+    log.server.endpoint(
+      `/event/${requestedEventId}/${competitionType}/results?sort=${sort}`,
+      results.length,
+    );
 
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'text/csv');
-    res.send(csv);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(results);
   });
 
   app.get('/event/:eventId/participants', async (req, res) => {
