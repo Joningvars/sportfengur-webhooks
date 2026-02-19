@@ -7,6 +7,8 @@
 - Fylla inn:
   - `EIDFAXI_USERNAME`
   - `EIDFAXI_PASSWORD`
+  - `CONTROL_AUTH_USERNAME`
+  - `CONTROL_AUTH_PASSWORD`
   - `EVENT_ID` (leyfilegt `eventId`, t.d. `70617`)
   - `PORT` (sjálfgefið 3000)
   - (valfrjálst) `WEBHOOK_SECRET_REQUIRED=true` + `SPORTFENGUR_WEBHOOK_SECRET`
