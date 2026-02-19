@@ -19,8 +19,8 @@ export const FETCH_RETRY_BASE_MS = Number(
 );
 export const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 export const DEBUG_LOGS = DEBUG_MODE;
-export const CONTROL_AUTH_USERNAME = 'eidfaxi';
-export const CONTROL_AUTH_PASSWORD = 'Eidfaxi123';
+export const CONTROL_AUTH_USERNAME = process.env.CONTROL_AUTH_USERNAME || '';
+export const CONTROL_AUTH_PASSWORD = process.env.CONTROL_AUTH_PASSWORD || '';
 const parsedEventId = Number(
   process.env.EVENT_ID_FILTER ?? process.env.EVENT_ID,
 );
@@ -43,7 +43,3 @@ export const VMIX_DEBOUNCE_MS = Number(process.env.VMIX_DEBOUNCE_MS || 200);
 export const VMIX_REFRESH_TIMEOUT_MS = Number(
   process.env.VMIX_REFRESH_TIMEOUT_MS || 30000,
 );
-const parsedVmixEventId = Number(process.env.VMIX_EVENT_ID);
-export const VMIX_EVENT_ID = Number.isInteger(parsedVmixEventId)
-  ? parsedVmixEventId
-  : null;

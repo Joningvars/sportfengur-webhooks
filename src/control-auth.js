@@ -120,6 +120,18 @@ export function registerControlAuthRoutes(app) {
   });
 
   app.post('/control/login', (req, res) => {
+    if (!CONTROL_AUTH_USERNAME || !CONTROL_AUTH_PASSWORD) {
+      res.status(500);
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(
+        renderLoginHtml(
+          'Innskraning er ekki stillt. Settu CONTROL_AUTH_USERNAME og CONTROL_AUTH_PASSWORD í env.',
+        ),
+      );
+      return;
+    }
+
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
 
