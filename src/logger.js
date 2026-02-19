@@ -68,28 +68,6 @@ export const log = {
       );
     },
   },
-  excel: {
-    writing: () => {
-      console.log(
-        `${colors.yellow}[${timestamp()}] 📝 Writing to Excel...${colors.reset}`,
-      );
-    },
-    written: () => {
-      console.log(
-        `${colors.green}[${timestamp()}] 💾 Excel saved${colors.reset}`,
-      );
-    },
-    fetching: (competitionName, classId, competitionId) => {
-      console.log(
-        `${colors.blue}[${timestamp()}] 🔍 Fetching${colors.reset} ${competitionName} | class=${classId} competition=${competitionId}`,
-      );
-    },
-    completed: (count, durationMs) => {
-      console.log(
-        `${colors.green}[${timestamp()}] ✅ Excel updated${colors.reset} ${count} entries in ${durationMs}ms`,
-      );
-    },
-  },
   vmix: {
     scheduled: (eventId, classId, competitionId, forceRefresh) => {
       console.log(

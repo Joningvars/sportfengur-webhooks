@@ -4,8 +4,6 @@ dotenv.config();
 
 export const WEBHOOK_SECRET = process.env.SPORTFENGUR_WEBHOOK_SECRET || '';
 export const WEBHOOK_SECRET_REQUIRED = true;
-export const EXCEL_PATH = process.env.EXCEL_PATH || './raslistar.xlsx';
-export const EXCEL_OUTPUT_PATH = process.env.EXCEL_OUTPUT_PATH || EXCEL_PATH;
 export const SPORTFENGUR_BASE_URL =
   process.env.SPORTFENGUR_BASE_URL || 'https://sportfengur.com/api/v1';
 export const SPORTFENGUR_LOCALE = process.env.SPORTFENGUR_LOCALE || 'is';
@@ -21,10 +19,26 @@ export const FETCH_RETRY_BASE_MS = Number(
 );
 export const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 export const DEBUG_LOGS = DEBUG_MODE;
-const parsedEventId = Number(process.env.EVENT_ID);
-export const EVENT_ID_FILTER = Number.isInteger(parsedEventId)
-  ? parsedEventId
-  : null;
+export const CONTROL_AUTH_USERNAME = 'eidfaxi';
+export const CONTROL_AUTH_PASSWORD = 'Eidfaxi123';
+const parsedEventId = Number(
+  process.env.EVENT_ID_FILTER ?? process.env.EVENT_ID,
+);
+let eventIdFilter = Number.isInteger(parsedEventId) ? parsedEventId : null;
+export function getEventIdFilter() {
+  return eventIdFilter;
+}
+export function setEventIdFilter(value) {
+  if (value === null) {
+    eventIdFilter = null;
+    return;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error('Invalid event ID filter');
+  }
+  eventIdFilter = parsed;
+}
 export const VMIX_DEBOUNCE_MS = Number(process.env.VMIX_DEBOUNCE_MS || 200);
 export const VMIX_REFRESH_TIMEOUT_MS = Number(
   process.env.VMIX_REFRESH_TIMEOUT_MS || 30000,

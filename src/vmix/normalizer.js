@@ -1,11 +1,4 @@
-/**
- * Data normalization functions for vMix integration
- * Transforms vendor API responses into stable vMix-friendly schemas
- */
 
-/**
- * Calculate age from faedingarnumer (birth ID)
- */
 function calculateAldur(faedingarnumer) {
   if (!faedingarnumer || typeof faedingarnumer !== 'string') return '';
   const match = faedingarnumer.match(/(\d{4})/);
@@ -21,31 +14,30 @@ function calculateAldur(faedingarnumer) {
   return new Date().getFullYear() - year;
 }
 
-/**
- * Format score to 2 decimal places without rounding and return as string
- * Handles both comma and dot decimal separators
- */
-function roundScore(value) {
+function roundScore(value, fixedTwoDecimals = false) {
   if (value === null || value === undefined || value === '') return '';
 
-  // Convert comma decimal separator to dot
-  let strValue = String(value).replace(',', '.');
+  const strValue = String(value).trim().replace(',', '.');
+  if (strValue === '') return '';
 
   const num = Number(strValue);
   if (!Number.isFinite(num)) return '';
 
-  // Truncate to 2 decimal places without rounding
-  const truncated = Math.floor(num * 100) / 100;
-
-  // Format and remove trailing zeros
-  return truncated.toFixed(2).replace(/\.?0+$/, '');
+  const rounded = Math.round(num * 100) / 100;
+  if (fixedTwoDecimals) {
+    const two = rounded.toFixed(2);
+    if (two.endsWith('.00')) {
+      return `${Number.parseInt(two, 10)}.0`;
+    }
+    return two;
+  }
+  const text = String(rounded);
+  if (!text.includes('.')) {
+    return `${text}.0`;
+  }
+  return text;
 }
 
-/**
- * Sanitize gait type name for use as JSON key
- * @param {string} gaitType - Raw gait type from API
- * @returns {string} Sanitized key
- */
 function sanitizeGaitKey(gaitType) {
   return String(gaitType)
     .toLowerCase()
@@ -61,12 +53,18 @@ function sanitizeGaitKey(gaitType) {
     .replace(/[æ]/g, 'ae');
 }
 
-/**
- * Extract gait-specific scores from judge data
- * Returns object with individual judge scores for each gait type as nested objects
- * @param {array} judges - Array of judge objects with sundurlidun_einkunna
- * @returns {object} Object with adal and dynamic gait type objects
- */
+const COLOR_HEX_BY_RAS_COLOR = {
+  '1 - Rauður': '#FF0000',
+  '2 - Gulur': '#FFFF00',
+  '3 - Grænn': '#008000',
+  '4 - Blár': '#0000FF',
+  '5 - Hvítur': '#FFFFFF',
+};
+
+function getColorHex(liturRas) {
+  return COLOR_HEX_BY_RAS_COLOR[String(liturRas || '').trim()] || '';
+}
+
 function extractGaitScores(judges) {
   const gaitScores = {
     adal: {},
@@ -76,7 +74,6 @@ function extractGaitScores(judges) {
     return gaitScores;
   }
 
-  // Extract main judge scores (adal) - E1 through E5
   judges.slice(0, 5).forEach((judge, index) => {
     const mainScore = judge?.domari_adaleinkunn;
     if (mainScore !== null && mainScore !== undefined) {
@@ -84,26 +81,23 @@ function extractGaitScores(judges) {
     }
   });
 
-  // Ensure all E1-E5 exist in adal (fill with empty strings if missing)
   for (let i = 1; i <= 5; i++) {
     if (!gaitScores.adal[`E${i}`]) {
       gaitScores.adal[`E${i}`] = '';
     }
   }
 
-  // Add E6 (average) to adal
   const adalScores = Object.values(gaitScores.adal).filter((s) => s !== '');
   if (adalScores.length > 0) {
     const sum = adalScores.reduce((a, b) => a + Number(b), 0);
     const avg = sum / adalScores.length;
-    gaitScores.adal.E6 = roundScore(avg);
+    gaitScores.adal.E6 = roundScore(avg, true);
   } else {
     gaitScores.adal.E6 = '';
   }
 
-  // Process each judge for gait-specific scores
   const gaitMaps = {};
-  const gaitTitles = {}; // Store original gait type names
+  const gaitTitles = {};
 
   judges.slice(0, 5).forEach((judge, judgeIndex) => {
     const breakdown = judge?.sundurlidun_einkunna;
@@ -115,26 +109,23 @@ function extractGaitScores(judges) {
 
       if (!gaitType || score === null || score === undefined) continue;
 
-      // Use the full gait type name as key (sanitized for JSON keys)
       const gaitKey = sanitizeGaitKey(gaitType);
 
       if (!gaitMaps[gaitKey]) {
         gaitMaps[gaitKey] = new Map();
-        gaitTitles[gaitKey] = gaitType; // Store original title
+        gaitTitles[gaitKey] = gaitType;
       }
       gaitMaps[gaitKey].set(judgeIndex, roundScore(score));
     }
   });
 
-  // Convert maps to objects and add E6 (average)
   Object.keys(gaitMaps).forEach((gaitKey) => {
     const map = gaitMaps[gaitKey];
     const scores = [];
     gaitScores[gaitKey] = {
-      _title: gaitTitles[gaitKey], // Store original title with underscore prefix
+      _title: gaitTitles[gaitKey],
     };
 
-    // Add E1-E5
     for (let i = 0; i < 5; i++) {
       if (map.has(i)) {
         gaitScores[gaitKey][`E${i + 1}`] = map.get(i);
@@ -144,14 +135,12 @@ function extractGaitScores(judges) {
       }
     }
 
-    // Add E6 (average)
     if (scores.length > 0) {
       const sum = scores.reduce((a, b) => a + b, 0);
       const avg = sum / scores.length;
-      gaitScores[gaitKey].E6 = roundScore(avg);
+      gaitScores[gaitKey].E6 = roundScore(avg, true);
     } else {
       gaitScores[gaitKey].E6 = '';
-      // Remove this gait type if it has no scores
       delete gaitScores[gaitKey];
     }
   });
@@ -159,13 +148,6 @@ function extractGaitScores(judges) {
   return gaitScores;
 }
 
-/**
- * Normalizes current rider data from vendor API response
- * @param {object} apiResponse - Raw vendor API response for current rider
- * @returns {object} Normalized current rider data with all competition fields
- *
- * Validates: Requirements 5.1, 5.5
- */
 export function normalizeCurrent(apiResponse) {
   if (!apiResponse || typeof apiResponse !== 'object') {
     return {
@@ -213,7 +195,6 @@ export function normalizeCurrent(apiResponse) {
       '',
   );
 
-  // Extract judge scores (E1-E5)
   const judges = Array.isArray(apiResponse.einkunnir_domara)
     ? apiResponse.einkunnir_domara
     : [];
@@ -221,8 +202,18 @@ export function normalizeCurrent(apiResponse) {
     .slice(0, 5)
     .map((j) => roundScore(j?.domari_adaleinkunn));
 
-  // Extract gait-specific scores
   const gaitScores = extractGaitScores(judges);
+  const e1 = judgeScores[0] || '';
+  const e2 = judgeScores[1] || '';
+  const e3 = judgeScores[2] || '';
+  const e4 = judgeScores[3] || '';
+  const e5 = judgeScores[4] || '';
+  const e6 = roundScore(apiResponse.keppandi_medaleinkunn, true);
+
+  const liturRas =
+    apiResponse.rodun_litur_numer != null && apiResponse.rodun_litur
+      ? `${apiResponse.rodun_litur_numer} - ${apiResponse.rodun_litur}`
+      : String(apiResponse.rodun_litur || '');
 
   return {
     Nr: String(apiResponse.vallarnumer || ''),
@@ -230,10 +221,8 @@ export function normalizeCurrent(apiResponse) {
     Holl: String(apiResponse.holl || ''),
     Hond: String(apiResponse.hond || ''),
     Knapi: riderName,
-    LiturRas:
-      apiResponse.rodun_litur_numer != null && apiResponse.rodun_litur
-        ? `${apiResponse.rodun_litur_numer} - ${apiResponse.rodun_litur}`
-        : String(apiResponse.rodun_litur || ''),
+    LiturRas: liturRas,
+    colorHex: getColorHex(liturRas),
     FelagKnapa: String(apiResponse.adildarfelag_knapa || ''),
     Hestur: horseName,
     Litur: String(apiResponse.hross_litur || ''),
@@ -241,31 +230,32 @@ export function normalizeCurrent(apiResponse) {
     FelagEiganda: String(apiResponse.adildarfelag_eiganda || ''),
     Lid: '',
     NafnBIG: riderName ? riderName.toUpperCase() : '',
-    E1: judgeScores[0] || '',
-    E2: judgeScores[1] || '',
-    E3: judgeScores[2] || '',
-    E4: judgeScores[3] || '',
-    E5: judgeScores[4] || '',
-    E6: roundScore(apiResponse.keppandi_medaleinkunn),
+    E1: e1,
+    E2: e2,
+    E3: e3,
+    E4: e4,
+    E5: e5,
+    E6: e6,
     ...gaitScores,
+    adal: {
+      E1: e1,
+      E2: e2,
+      E3: e3,
+      E4: e4,
+      E5: e5,
+      E6: e6,
+    },
     timestamp: new Date().toISOString(),
   };
 }
 
-/**
- * Normalizes leaderboard data from vendor API response
- * @param {array} apiResponse - Raw vendor API response array for leaderboard
- * @returns {array} Normalized leaderboard entries with all competition fields
- *
- * Validates: Requirements 5.2, 5.5
- */
 export function normalizeLeaderboard(apiResponse) {
   if (!Array.isArray(apiResponse)) {
     return [];
   }
 
   return apiResponse
-    .filter((entry) => entry && entry.keppandi_medaleinkunn != null)
+    .filter((entry) => entry != null)
     .map((entry) => {
       const riderName = String(
         entry.knapi_fullt_nafn ||
@@ -280,7 +270,6 @@ export function normalizeLeaderboard(apiResponse) {
           '',
       );
 
-      // Extract judge scores (E1-E5)
       const judges = Array.isArray(entry.einkunnir_domara)
         ? entry.einkunnir_domara
         : [];
@@ -288,8 +277,18 @@ export function normalizeLeaderboard(apiResponse) {
         .slice(0, 5)
         .map((j) => roundScore(j?.domari_adaleinkunn));
 
-      // Extract gait-specific scores
       const gaitScores = extractGaitScores(judges);
+      const e1 = judgeScores[0] || '';
+      const e2 = judgeScores[1] || '';
+      const e3 = judgeScores[2] || '';
+      const e4 = judgeScores[3] || '';
+      const e5 = judgeScores[4] || '';
+      const e6 = roundScore(entry.keppandi_medaleinkunn, true);
+
+      const liturRas =
+        entry.rodun_litur_numer != null && entry.rodun_litur
+          ? `${entry.rodun_litur_numer} - ${entry.rodun_litur}`
+          : String(entry.rodun_litur || '');
 
       return {
         Nr: String(entry.vallarnumer || ''),
@@ -297,10 +296,8 @@ export function normalizeLeaderboard(apiResponse) {
         Holl: String(entry.holl || ''),
         Hond: String(entry.hond || ''),
         Knapi: riderName,
-        LiturRas:
-          entry.rodun_litur_numer != null && entry.rodun_litur
-            ? `${entry.rodun_litur_numer} - ${entry.rodun_litur}`
-            : String(entry.rodun_litur || ''),
+        LiturRas: liturRas,
+        colorHex: getColorHex(liturRas),
         FelagKnapa: String(entry.adildarfelag_knapa || ''),
         Hestur: horseName,
         Litur: String(entry.hross_litur || ''),
@@ -308,13 +305,21 @@ export function normalizeLeaderboard(apiResponse) {
         FelagEiganda: String(entry.adildarfelag_eiganda || ''),
         Lid: '',
         NafnBIG: riderName ? riderName.toUpperCase() : '',
-        E1: judgeScores[0] || '',
-        E2: judgeScores[1] || '',
-        E3: judgeScores[2] || '',
-        E4: judgeScores[3] || '',
-        E5: judgeScores[4] || '',
-        E6: roundScore(entry.keppandi_medaleinkunn),
+        E1: e1,
+        E2: e2,
+        E3: e3,
+        E4: e4,
+        E5: e5,
+        E6: e6,
         ...gaitScores,
+        adal: {
+          E1: e1,
+          E2: e2,
+          E3: e3,
+          E4: e4,
+          E5: e5,
+          E6: e6,
+        },
       };
     })
     .sort((a, b) => {
@@ -324,93 +329,158 @@ export function normalizeLeaderboard(apiResponse) {
     });
 }
 
-/**
- * Converts normalized leaderboard array to CSV string
- * @param {array} leaderboard - Normalized leaderboard array
- * @returns {string} CSV formatted leaderboard with headers
- *
- * Validates: Requirements 5.3, 5.4
- */
 export function leaderboardToCsv(leaderboard) {
-  const headers =
-    'Nr,Saeti,Holl,Hond,Knapi,LiturRas,FelagKnapa,Hestur,Litur,Aldur,FelagEiganda,Lid,NafnBIG,E1,E2,E3,E4,E5,E6,adalE1,adalE2,adalE3,adalE4,adalE5,adalE6,toltE1,toltE2,toltE3,toltE4,toltE5,toltE6,brokkE1,brokkE2,brokkE3,brokkE4,brokkE5,brokkE6,skeðE1,skeðE2,skeðE3,skeðE4,skeðE5,skeðE6,stökkE1,stökkE2,stökkE3,stökkE4,stökkE5,stökkE6,hægtE1,hægtE2,hægtE3,hægtE4,hægtE5,hægtE6';
+  const baseHeaders = [
+    'Nr',
+    'Saeti',
+    'Holl',
+    'Hond',
+    'Knapi',
+    'LiturRas',
+    'colorHex',
+    'FelagKnapa',
+    'Hestur',
+    'Litur',
+    'Aldur',
+    'FelagEiganda',
+    'Lid',
+    'NafnBIG',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'E5',
+    'E6',
+    'adalE1',
+    'adalE2',
+    'adalE3',
+    'adalE4',
+    'adalE5',
+    'adalE6',
+  ];
 
   if (!Array.isArray(leaderboard) || leaderboard.length === 0) {
-    return headers + '\n';
+    return baseHeaders.join(',') + '\n';
   }
 
-  const rows = leaderboard.map((entry) => {
-    const nr = entry.Nr || '';
-    const saeti = entry.Saeti || '';
-    const holl = entry.Holl || '';
-    const hond = entry.Hond || '';
-    const knapi = escapeCsvField(entry.Knapi || '');
-    const liturRas = escapeCsvField(entry.LiturRas || '');
-    const felagKnapa = escapeCsvField(entry.FelagKnapa || '');
-    const hestur = escapeCsvField(entry.Hestur || '');
-    const litur = escapeCsvField(entry.Litur || '');
-    const aldur = entry.Aldur || '';
-    const felagEiganda = escapeCsvField(entry.FelagEiganda || '');
-    const lid = entry.Lid || '';
-    const nafnBIG = escapeCsvField(entry.NafnBIG || '');
-    const e1 = entry.E1 || '';
-    const e2 = entry.E2 || '';
-    const e3 = entry.E3 || '';
-    const e4 = entry.E4 || '';
-    const e5 = entry.E5 || '';
-    const e6 = entry.E6 || '';
-    const adalE1 = entry.adalE1 || '';
-    const adalE2 = entry.adalE2 || '';
-    const adalE3 = entry.adalE3 || '';
-    const adalE4 = entry.adalE4 || '';
-    const adalE5 = entry.adalE5 || '';
-    const adalE6 = entry.adalE6 || '';
-    const toltE1 = entry.toltE1 || '';
-    const toltE2 = entry.toltE2 || '';
-    const toltE3 = entry.toltE3 || '';
-    const toltE4 = entry.toltE4 || '';
-    const toltE5 = entry.toltE5 || '';
-    const toltE6 = entry.toltE6 || '';
-    const brokkE1 = entry.brokkE1 || '';
-    const brokkE2 = entry.brokkE2 || '';
-    const brokkE3 = entry.brokkE3 || '';
-    const brokkE4 = entry.brokkE4 || '';
-    const brokkE5 = entry.brokkE5 || '';
-    const brokkE6 = entry.brokkE6 || '';
-    const skeðE1 = entry.skeðE1 || '';
-    const skeðE2 = entry.skeðE2 || '';
-    const skeðE3 = entry.skeðE3 || '';
-    const skeðE4 = entry.skeðE4 || '';
-    const skeðE5 = entry.skeðE5 || '';
-    const skeðE6 = entry.skeðE6 || '';
-    const stökkE1 = entry.stökkE1 || '';
-    const stökkE2 = entry.stökkE2 || '';
-    const stökkE3 = entry.stökkE3 || '';
-    const stökkE4 = entry.stökkE4 || '';
-    const stökkE5 = entry.stökkE5 || '';
-    const stökkE6 = entry.stökkE6 || '';
-    const hægtE1 = entry.hægtE1 || '';
-    const hægtE2 = entry.hægtE2 || '';
-    const hægtE3 = entry.hægtE3 || '';
-    const hægtE4 = entry.hægtE4 || '';
-    const hægtE5 = entry.hægtE5 || '';
-    const hægtE6 = entry.hægtE6 || '';
+  const excludedKeys = new Set([
+    'Nr',
+    'Saeti',
+    'Holl',
+    'Hond',
+    'Knapi',
+    'LiturRas',
+    'colorHex',
+    'FelagKnapa',
+    'Hestur',
+    'Litur',
+    'Aldur',
+    'FelagEiganda',
+    'Lid',
+    'NafnBIG',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'E5',
+    'E6',
+    'adal',
+    'timestamp',
+  ]);
 
-    return `${nr},${saeti},${holl},${hond},${knapi},${liturRas},${felagKnapa},${hestur},${litur},${aldur},${felagEiganda},${lid},${nafnBIG},${e1},${e2},${e3},${e4},${e5},${e6},${adalE1},${adalE2},${adalE3},${adalE4},${adalE5},${adalE6},${toltE1},${toltE2},${toltE3},${toltE4},${toltE5},${toltE6},${brokkE1},${brokkE2},${brokkE3},${brokkE4},${brokkE5},${brokkE6},${skeðE1},${skeðE2},${skeðE3},${skeðE4},${skeðE5},${skeðE6},${stökkE1},${stökkE2},${stökkE3},${stökkE4},${stökkE5},${stökkE6},${hægtE1},${hægtE2},${hægtE3},${hægtE4},${hægtE5},${hægtE6}`;
+  const gaitKeys = new Set();
+  for (const entry of leaderboard) {
+    for (const [key, value] of Object.entries(entry || {})) {
+      if (excludedKeys.has(key)) continue;
+      if (value && typeof value === 'object') {
+        gaitKeys.add(key);
+      }
+    }
+  }
+
+  const priority = [
+    'tolt_frjals_hradi',
+    'haegt_tolt',
+    'tolt_med_slakan_taum',
+    'brokk',
+    'skeid',
+    'flugskeid',
+    'stokk',
+  ];
+  const sortedGaitKeys = [...gaitKeys].sort((a, b) => {
+    const ai = priority.indexOf(a);
+    const bi = priority.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
   });
 
-  return headers + '\n' + rows.join('\n') + '\n';
+  const gaitHeaders = [];
+  for (const key of sortedGaitKeys) {
+    gaitHeaders.push(
+      `${key}E1`,
+      `${key}E2`,
+      `${key}E3`,
+      `${key}E4`,
+      `${key}E5`,
+      `${key}E6`,
+    );
+  }
+
+  const headers = [...baseHeaders, ...gaitHeaders];
+
+  const rows = leaderboard.map((entry) => {
+    const baseValues = [
+      entry.Nr || '',
+      entry.Saeti || '',
+      entry.Holl || '',
+      entry.Hond || '',
+      escapeCsvField(entry.Knapi || ''),
+      escapeCsvField(entry.LiturRas || ''),
+      entry.colorHex || '',
+      escapeCsvField(entry.FelagKnapa || ''),
+      escapeCsvField(entry.Hestur || ''),
+      escapeCsvField(entry.Litur || ''),
+      entry.Aldur || '',
+      escapeCsvField(entry.FelagEiganda || ''),
+      entry.Lid || '',
+      escapeCsvField(entry.NafnBIG || ''),
+      entry.E1 || '',
+      entry.E2 || '',
+      entry.E3 || '',
+      entry.E4 || '',
+      entry.E5 || '',
+      entry.E6 || '',
+      entry?.adal?.E1 || '',
+      entry?.adal?.E2 || '',
+      entry?.adal?.E3 || '',
+      entry?.adal?.E4 || '',
+      entry?.adal?.E5 || '',
+      entry?.adal?.E6 || '',
+    ];
+
+    const gaitValues = [];
+    for (const key of sortedGaitKeys) {
+      gaitValues.push(
+        entry?.[key]?.E1 || '',
+        entry?.[key]?.E2 || '',
+        entry?.[key]?.E3 || '',
+        entry?.[key]?.E4 || '',
+        entry?.[key]?.E5 || '',
+        entry?.[key]?.E6 || '',
+      );
+    }
+
+    return [...baseValues, ...gaitValues].join(',');
+  });
+
+  return headers.join(',') + '\n' + rows.join('\n') + '\n';
 }
 
-/**
- * Escapes a CSV field if it contains special characters
- * @param {string} field - Field value to escape
- * @returns {string} Escaped field value
- */
 function escapeCsvField(field) {
   const str = String(field);
 
-  // If field contains comma, quote, or newline, wrap in quotes and escape quotes
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }

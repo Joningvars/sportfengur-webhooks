@@ -24,7 +24,7 @@ if "%WEBHOOK_SECRET%"=="" (
 echo Sending event_einkunn_saeti for competitionId=%COMPETITION_ID%, published=%PUBLISHED%...
 
 REM Curl all on one line, verbose, with published
-curl -v -X POST https://eidfaxi.ngrok.app/event_einkunn_saeti ^
+curl -v -X POST https://api.your-domain.com/event_einkunn_saeti ^
   -H "Content-Type: application/json" ^
   -H "x-webhook-secret: %WEBHOOK_SECRET%" ^
   -d "{\"eventId\":%EVENT_ID%,\"classId\":%CLASS_ID%,\"competitionId\":%COMPETITION_ID%,\"published\":%PUBLISHED%}"
