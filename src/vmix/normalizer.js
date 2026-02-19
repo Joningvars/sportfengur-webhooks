@@ -25,9 +25,17 @@ function roundScore(value, fixedTwoDecimals = false) {
 
   const rounded = Math.round(num * 100) / 100;
   if (fixedTwoDecimals) {
-    return rounded.toFixed(2);
+    const two = rounded.toFixed(2);
+    if (two.endsWith('.00')) {
+      return `${Number.parseInt(two, 10)}.0`;
+    }
+    return two;
   }
-  return String(rounded);
+  const text = String(rounded);
+  if (!text.includes('.')) {
+    return `${text}.0`;
+  }
+  return text;
 }
 
 function sanitizeGaitKey(gaitType) {
