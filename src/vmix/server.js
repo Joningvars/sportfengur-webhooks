@@ -28,6 +28,7 @@ const COLOR_HEX_BY_RAS_COLOR = {
   '3 - Grænn': '#008000',
   '4 - Blár': '#0000FF',
   '5 - Hvítur': '#FFFFFF',
+  '6 - Svartur': '#000000',
 };
 
 function getColorHex(color) {
