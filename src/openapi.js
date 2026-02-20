@@ -46,7 +46,7 @@ export const openApiSpec = {
   },
   servers: [
     {
-      url: 'https://eidfaxi-api.railway.internal',
+      url: 'https://eidfaxi-api-production.up.railway.app',
       description: 'Production server',
     },
     {

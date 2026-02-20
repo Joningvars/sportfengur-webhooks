@@ -40,6 +40,26 @@ function timestamp() {
   return new Date().toTimeString().split(' ')[0];
 }
 
+const ENDPOINT_LOG_WINDOW_MS = 10000;
+const endpointLogStats = new Map();
+
+function logEndpointSummary(path, stat, now) {
+  if (!stat.requests) return;
+  const seconds = Math.max(
+    1,
+    Math.round((now - (stat.windowStartAt || now)) / 1000),
+  );
+  const suffix =
+    stat.requests > 1
+      ? ` (${stat.requests} req/${seconds}s)`
+      : '';
+  console.log(
+    `${colors.cyan}[${timestamp()}] 🌐 ${path}${colors.reset} returning ${stat.latestCount} entries${suffix}`,
+  );
+  stat.requests = 0;
+  stat.windowStartAt = now;
+}
+
 export const log = {
   webhook: {
     received: (eventName, payload) => {
@@ -122,9 +142,26 @@ export const log = {
   },
   server: {
     endpoint: (path, count) => {
-      console.log(
-        `${colors.cyan}[${timestamp()}] 🌐 ${path}${colors.reset} returning ${count} entries`,
-      );
+      const now = Date.now();
+      const key = String(path || '');
+      const stat = endpointLogStats.get(key) || {
+        windowStartAt: now,
+        lastFlushAt: 0,
+        requests: 0,
+        latestCount: 0,
+      };
+      stat.requests += 1;
+      stat.latestCount = count;
+
+      if (
+        !stat.lastFlushAt ||
+        now - stat.lastFlushAt >= ENDPOINT_LOG_WINDOW_MS
+      ) {
+        logEndpointSummary(key, stat, now);
+        stat.lastFlushAt = now;
+      }
+
+      endpointLogStats.set(key, stat);
     },
   },
   error: (context, error) => {
