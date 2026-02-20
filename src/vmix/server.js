@@ -215,12 +215,15 @@ function renderControlHtml() {
     * { box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
     html, body { width:100%; min-height:100%; }
     body { margin:0; background:var(--bg); color:var(--fg); display:flex; justify-content:center; align-items:flex-start; }
-    .wrap { width:min(760px, 100% - 24px); margin:24px 0; }
+    .wrap { width:min(1200px, 100% - 24px); margin:24px 0; }
     .header { margin-bottom:12px; display:flex; flex-direction:column; gap:8px; }
     .header h1 { margin:0; font-size:28px; text-align:center; }
     .sub { color:var(--muted); font-size:14px; text-align:center; }
     .status { background:#eef2ff; color:#1e3a8a; border:1px solid #c7d2fe; border-radius:8px; padding:8px 10px; font-size:14px; align-self:center; }
-    .grid { display:grid; grid-template-columns:1fr; gap:12px; }
+    .grid { display:grid; grid-template-columns:1fr; gap:12px; align-items:start; }
+    @media (min-width: 980px) {
+      .grid { grid-template-columns: 1.3fr 0.85fr; }
+    }
     .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
     h2 { margin:0 0 10px; font-size:20px; }
     label { display:block; margin:8px 0 6px; color:var(--muted); font-size:13px; font-weight:600; }
@@ -244,6 +247,11 @@ function renderControlHtml() {
     .statekey { font-weight:600; }
     .stateval { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
     .stateval.missing { color:#6b7280; }
+    .endpoint-grid { margin-top:2px; display:grid; grid-template-columns:1fr; gap:8px; }
+    .endpoint-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .endpoint-btn { border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; text-align:left; cursor:pointer; width:100%; }
+    .endpoint-btn:hover { background:#eef2ff; border-color:#93c5fd; }
+    .endpoint-btn:disabled { opacity:.5; cursor:not-allowed; }
     pre { margin:0; white-space:pre-wrap; background:#111827; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:12px; min-height:120px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size:13px; }
     #webhookLog { min-height:120px; max-height:220px; overflow:auto; }
     .ok { color:var(--ok); }
@@ -291,6 +299,11 @@ function renderControlHtml() {
       <h2 style="margin-top:14px">Nýleg webhook skilaboð</h2>
       <pre id="webhookLog">Hleð webhook log...</pre>
     </div>
+    <div class="card shortcuts-card">
+      <h2>Flýtileiðir í API</h2>
+      <p class="muted" style="margin-top:0">Sort: bættu við <code>?sort=start</code> eða <code>?sort=rank</code> eftir þörfum.</p>
+      <div id="endpointButtons" class="endpoint-grid"></div>
+    </div>
     </div>
   </div>
   <script>
@@ -298,6 +311,7 @@ function renderControlHtml() {
     const webhookOut = document.getElementById('webhookLog');
     const filterStatus = document.getElementById('filterStatus');
     const classIdState = document.getElementById('classIdState');
+    const endpointButtons = document.getElementById('endpointButtons');
     const eventSelect = document.getElementById('eventSelect');
     const classIdSelect = document.getElementById('classIdSelect');
     const classIdInput = document.getElementById('classIdInput');
@@ -325,10 +339,63 @@ function renderControlHtml() {
       if (!value) {
         syncRefreshButtons();
       }
+      renderEndpointButtons();
     }
     function setFilterStatus(val) {
       currentFilterValue = val ? Number(val) : null;
       filterStatus.textContent = val ? 'Motasía: ' + val : 'Motasía: engin';
+    }
+    function getApiBase() {
+      return window.location.origin;
+    }
+    function renderEndpointButtons() {
+      const eventId = getSelectedEventId() || currentFilterValue;
+      const buttons = [];
+
+      ['forkeppni', 'b-urslit', 'a-urslit'].forEach((type) => {
+        buttons.push({ label: 'event/' + type, path: '/event/' + type, needsEvent: false });
+        buttons.push({ label: 'event/' + type + '/results', path: '/event/' + type + '/results', needsEvent: false });
+        buttons.push({ label: 'event/' + type + '/groups?groupSize=7', path: '/event/' + type + '/groups?groupSize=7', needsEvent: false });
+        buttons.push({ label: 'event/' + type + '/group?groupSize=7&group=1', path: '/event/' + type + '/group?groupSize=7&group=1', needsEvent: false });
+        buttons.push({ label: 'event/' + type + '/groups/flat?groupSize=7', path: '/event/' + type + '/groups/flat?groupSize=7', needsEvent: false });
+        buttons.push({ label: 'event/' + type + '/csv', path: '/event/' + type + '/csv', needsEvent: false });
+      });
+
+      if (eventId) {
+        buttons.push({ label: 'event/' + eventId + '/tests', path: '/event/' + eventId + '/tests', needsEvent: true });
+        buttons.push({ label: 'event/' + eventId + '/participants', path: '/event/' + eventId + '/participants', needsEvent: true });
+      } else {
+        buttons.push({ label: 'event/{eventId}/tests', path: '', needsEvent: true });
+        buttons.push({ label: 'event/{eventId}/participants', path: '', needsEvent: true });
+      }
+
+      buttons.push({ label: 'event/current', path: '/event/current', needsEvent: false });
+      buttons.push({ label: 'event/leaderboards.zip', path: '/event/leaderboards.zip', needsEvent: false });
+      buttons.push({ label: 'event/csv.zip', path: '/event/csv.zip', needsEvent: false });
+      buttons.push({ label: 'events/search (ár)', path: '/events/search?ar=' + new Date().getFullYear() + '&land=IS&innanhusmot=1', needsEvent: false });
+
+      endpointButtons.innerHTML = '';
+      for (let i = 0; i < buttons.length; i += 2) {
+        const row = document.createElement('div');
+        row.className = 'endpoint-row';
+        for (let j = 0; j < 2; j += 1) {
+          const item = buttons[i + j];
+          if (!item) continue;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'endpoint-btn';
+          btn.textContent = item.label;
+          const disabled = busy || (item.needsEvent && !eventId);
+          btn.disabled = disabled;
+          btn.addEventListener('click', () => {
+            if (!item.path) return;
+            const url = getApiBase() + item.path;
+            window.open(url, '_blank', 'noopener');
+          });
+          row.appendChild(btn);
+        }
+        endpointButtons.appendChild(row);
+      }
     }
     function getSelectedEventId() {
       const raw = String(eventSelect.value || '').trim();
@@ -397,6 +464,7 @@ function renderControlHtml() {
       if (selected) {
         upsertSelectedEventOption(selected);
       }
+      renderEndpointButtons();
     }
     function hasStateContext() {
       if (!eventState) return false;
@@ -686,6 +754,7 @@ function renderControlHtml() {
     }
     eventSelect.addEventListener('change', syncRefreshButtons);
     eventSelect.addEventListener('change', renderClassIdState);
+    eventSelect.addEventListener('change', renderEndpointButtons);
     eventSelect.addEventListener('change', () => {
       loadClassIdsFromTests().catch(() => {
         classIdFromTests = {
@@ -700,6 +769,7 @@ function renderControlHtml() {
     });
     classIdInput.addEventListener('input', syncRefreshButtons);
     classIdSelect.addEventListener('change', syncRefreshButtons);
+    renderEndpointButtons();
     syncRefreshButtons();
     getEventFilter().catch((e) => show(String(e), false));
     setInterval(() => {
