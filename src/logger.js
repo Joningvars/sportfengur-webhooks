@@ -62,6 +62,16 @@ function logEndpointSummary(path, stat, now) {
 
 export const log = {
   webhook: {
+    unauthorized: (eventName, hasSecretHeader) => {
+      console.warn(
+        `${colors.yellow}[${timestamp()}] 🔐 Unauthorized webhook${colors.reset} ${eventName} | x-webhook-secret=${hasSecretHeader ? 'present' : 'missing'}`,
+      );
+    },
+    invalidPayload: (eventName, missingFields) => {
+      console.warn(
+        `${colors.yellow}[${timestamp()}] ⚠️  Invalid webhook payload${colors.reset} ${eventName} | missing=${missingFields.join(', ')}`,
+      );
+    },
     received: (eventName, payload) => {
       console.log(
         `${colors.cyan}[${timestamp()}] 📥 Webhook received${colors.reset} ${eventName} | event=${payload.eventId ?? 'N/A'} class=${payload.classId ?? 'N/A'} competition=${payload.competitionId ?? 'N/A'}`,

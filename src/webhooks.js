@@ -40,9 +40,15 @@ function pushWebhookHistory(entry) {
   }
 }
 
-function requireWebhookSecret(req, res) {
+function requireWebhookSecret(req, res, eventName) {
   const secretHeader = req.header('x-webhook-secret') || '';
   if (!WEBHOOK_SECRET || secretHeader !== WEBHOOK_SECRET) {
+    log.webhook.unauthorized(eventName, Boolean(secretHeader));
+    pushWebhookHistory({
+      status: 'unauthorized',
+      eventName,
+      hasSecretHeader: Boolean(secretHeader),
+    });
     res.status(401).send('Unauthorized');
     return false;
   }
@@ -125,13 +131,22 @@ async function resolveCompetitionId(payload) {
 }
 
 async function handleWebhook(req, res, eventName) {
-  if (!requireWebhookSecret(req, res)) {
+  if (!requireWebhookSecret(req, res, eventName)) {
     return;
   }
 
   const payload = normalizePayload(req.body || {});
   const missing = validatePayload(eventName, payload);
   if (missing.length > 0) {
+    log.webhook.invalidPayload(eventName, missing);
+    pushWebhookHistory({
+      status: 'invalid_payload',
+      eventName,
+      missing,
+      eventId: payload.eventId ?? null,
+      classId: payload.classId ?? null,
+      competitionId: payload.competitionId ?? null,
+    });
     res.status(400).send(`Missing required fields: ${missing.join(', ')}`);
     return;
   }
