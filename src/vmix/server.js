@@ -132,11 +132,54 @@ function extractGangtegundResults(currentState, sort = 'start') {
 }
 
 function sortLeaderboard(entries, sort) {
-  const mode = sort === 'rank' ? 'rank' : 'start';
+  const mode =
+    sort === 'rank' ? 'rank' : sort === 'teams' ? 'teams' : 'start';
   return [...entries].sort((a, b) => {
+    if (mode === 'teams') {
+      const teamA = String(a?.Lid || '').trim().toLowerCase();
+      const teamB = String(b?.Lid || '').trim().toLowerCase();
+      if (teamA !== teamB) {
+        if (!teamA) return 1;
+        if (!teamB) return -1;
+        return teamA.localeCompare(teamB);
+      }
+
+      const startA = Number(a?.Nr) || 999;
+      const startB = Number(b?.Nr) || 999;
+      if (startA !== startB) {
+        return startA - startB;
+      }
+
+      const riderA = String(a?.Knapi || '');
+      const riderB = String(b?.Knapi || '');
+      return riderA.localeCompare(riderB);
+    }
+
     const valueA = Number(mode === 'rank' ? a.Saeti : a.Nr) || 999;
     const valueB = Number(mode === 'rank' ? b.Saeti : b.Nr) || 999;
     return valueA - valueB;
+  });
+}
+
+function filterLeaderboardBySearch(entries, search) {
+  const term = String(search || '').trim().toLowerCase();
+  if (!term) return [...entries];
+
+  return entries.filter((entry) => {
+    const haystack = [
+      entry?.Lid,
+      entry?.Knapi,
+      entry?.Hestur,
+      entry?.Nr,
+      entry?.Saeti,
+      entry?.NafnBIG,
+      entry?.FelagKnapa,
+      entry?.FelagEiganda,
+    ]
+      .map((value) => String(value || '').toLowerCase())
+      .join(' ');
+
+    return haystack.includes(term);
   });
 }
 
@@ -173,17 +216,19 @@ function resolveCompetitionRequest(req, res, defaultSort = 'start') {
   const { competitionType, competitionId } = scope;
 
   const sort = req.query.sort == null ? defaultSort : String(req.query.sort);
-  if (sort !== 'start' && sort !== 'rank') {
+  if (sort !== 'start' && sort !== 'rank' && sort !== 'teams') {
     res.status(400).json({
       error: 'Invalid sort value',
-      supported: ['start', 'rank'],
+      supported: ['start', 'rank', 'teams'],
     });
     return null;
   }
 
   const leaderboard = getLeaderboardState(competitionId);
   const sorted = sortLeaderboard(leaderboard, sort);
-  return { competitionType, sort, sorted, competitionId };
+  const search = req.query.search == null ? '' : String(req.query.search);
+  const filtered = filterLeaderboardBySearch(sorted, search);
+  return { competitionType, sort, sorted: filtered, competitionId, search };
 }
 
 function parsePositiveInt(value) {
@@ -791,10 +836,12 @@ export function registerVmixRoutes(app) {
 
   app.get('/event/current', (req, res) => {
     const currentState = getCurrentState();
+    const search = req.query.search == null ? '' : String(req.query.search);
+    const filtered = filterLeaderboardBySearch(currentState, search);
     log.server.endpoint('/event/current', currentState.length);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/json');
-    res.json(currentState);
+    res.json(filtered);
   });
 
   app.get('/event/state', (req, res) => {
