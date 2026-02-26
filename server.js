@@ -39,4 +39,5 @@ app.listen(port, () => {
                                                                 `);
   console.log('SportFengur Webhooks er ræst');
   console.log(`Vefþjónn keyrir á porti ${port}`);
+  console.log('vMix routes are ready (/event/*, /control)');
 });
