@@ -181,6 +181,7 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
   const skippedLines = [];
   const teams = new Map();
   let currentLeagueTeamId = null;
+  const seenContestantIds = new Set();
 
   for (let i = 0; i < lines.length; i += 1) {
     const rawLine = lines[i];
@@ -212,6 +213,7 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
     }
 
     const contestant = await ensureContestant(displayName);
+    seenContestantIds.add(contestant.id);
     if (contestant.created) {
       createdContestants += 1;
       insertedContestants.push({ id: contestant.id, display_name: displayName });
@@ -241,6 +243,7 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
     skipped,
     insertedContestants,
     skippedLines,
+    seenContestantIds: [...seenContestantIds],
   };
 }
 
@@ -608,8 +611,36 @@ export function registerRosterRoutes(app) {
     }
 
     try {
+      const replaceExisting =
+        req.body?.replaceExisting == null ? true : Boolean(req.body.replaceExisting);
+
       const result = await importContestantsFromText(text, leagueKey, eventIds);
-      return res.json(result);
+
+      if (replaceExisting) {
+        const ids = result.seenContestantIds || [];
+        if (ids.length > 0) {
+          await queryDb(
+            `
+            DELETE FROM contestant_league_memberships
+            WHERE league_key = $1
+              AND contestant_id <> ALL($2::bigint[])
+            `,
+            [leagueKey, ids],
+          );
+        } else {
+          await queryDb(
+            `
+            DELETE FROM contestant_league_memberships
+            WHERE league_key = $1
+            `,
+            [leagueKey],
+          );
+        }
+      }
+
+      const { seenContestantIds, ...response } = result;
+      response.replaceExisting = replaceExisting;
+      return res.json(response);
     } catch (error) {
       return res.status(500).json({
         error: 'Failed to import contestants',
