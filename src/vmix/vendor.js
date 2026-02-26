@@ -104,7 +104,7 @@ export async function fetchLeaderboard(
       };
     });
 
-    return enrichEntriesWithTeam(combined);
+    return enrichEntriesWithTeam(combined, eventId);
   } catch (error) {
     log.error('vMix vendor fetchLeaderboard', error);
     throw error;
