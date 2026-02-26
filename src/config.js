@@ -46,3 +46,6 @@ export const VMIX_REFRESH_TIMEOUT_MS = Number(
 export const DATABASE_URL = process.env.DATABASE_URL || '';
 export const DATABASE_SSL = process.env.DATABASE_SSL === 'true';
 export const DATABASE_POOL_MAX = Number(process.env.DATABASE_POOL_MAX || 10);
+export const ROSTER_CACHE_TTL_MS = Number(
+  process.env.ROSTER_CACHE_TTL_MS || 60000,
+);

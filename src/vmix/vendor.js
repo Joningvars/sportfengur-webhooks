@@ -2,6 +2,7 @@
 import { apiGetWithRetry } from '../sportfengur.js';
 import { SPORTFENGUR_LOCALE } from '../config.js';
 import { log } from '../logger.js';
+import { enrichEntriesWithTeam } from '../roster-enrichment.js';
 
 const startingListCache = new Map();
 
@@ -103,7 +104,7 @@ export async function fetchLeaderboard(
       };
     });
 
-    return combined;
+    return enrichEntriesWithTeam(combined);
   } catch (error) {
     log.error('vMix vendor fetchLeaderboard', error);
     throw error;
