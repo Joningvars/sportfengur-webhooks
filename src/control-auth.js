@@ -46,6 +46,35 @@ function isAuthenticated(req) {
   return true;
 }
 
+function isBasicAuthenticated(req) {
+  const authHeader = String(req.header('authorization') || '');
+  if (!authHeader.toLowerCase().startsWith('basic ')) {
+    return false;
+  }
+
+  const encoded = authHeader.slice(6).trim();
+  if (!encoded) return false;
+
+  let decoded = '';
+  try {
+    decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  } catch {
+    return false;
+  }
+
+  const sep = decoded.indexOf(':');
+  if (sep < 0) return false;
+
+  const username = decoded.slice(0, sep);
+  const password = decoded.slice(sep + 1);
+  return (
+    Boolean(CONTROL_AUTH_USERNAME) &&
+    Boolean(CONTROL_AUTH_PASSWORD) &&
+    username === CONTROL_AUTH_USERNAME &&
+    password === CONTROL_AUTH_PASSWORD
+  );
+}
+
 function setSessionCookie(res, token) {
   const maxAge = Math.floor(SESSION_TTL_MS / 1000);
   res.setHeader(
@@ -104,6 +133,7 @@ function renderLoginHtml(errorMessage = '') {
 
 export function requireControlSession(req, res, api = false) {
   if (isAuthenticated(req)) return true;
+  if (api && isBasicAuthenticated(req)) return true;
   if (api) {
     res.status(401).json({ error: 'Unauthorized' });
   } else {
