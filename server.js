@@ -12,6 +12,7 @@ import {
 import { registerDocs } from './src/docs.js';
 import { registerControlAuthRoutes } from './src/control-auth.js';
 import { registerVmixRoutes } from './src/vmix/server.js';
+import { registerRosterRoutes } from './src/roster-routes.js';
 
 const app = express();
 app.use(express.json());
@@ -27,6 +28,7 @@ registerControlWebhookRoutes(app);
 registerDocs(app);
 registerControlAuthRoutes(app);
 registerVmixRoutes(app);
+registerRosterRoutes(app);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

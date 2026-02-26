@@ -65,6 +65,23 @@ Athugið: Ef slóðin breytist, uppfærið URL inni í scriptinu (t.d. `https://
 - E1–E5 koma úr `einkunnir_domara` og E6 úr `keppandi_medaleinkunn`.
 - Ef `EVENT_ID` er stillt, þá eru aðeins webhook events með þessu `eventId` unnin.
 
+## Gagnagrunnur (PostgreSQL)
+- Setjið umhverfisbreytur:
+  - `DATABASE_URL`
+  - `DATABASE_SSL=true` (Railway/Postgres með TLS)
+  - `DATABASE_POOL_MAX` (sjálfgefið `10`)
+- Keyrið migrations:
+```bat
+npm run db:migrate
+```
+- Control endpoints (krefjast innskráningar á `/control/login`):
+  - `GET /control/db/health`
+  - `GET /control/contestants?q=<nafn>`
+  - `POST /control/contestants`
+    - body: `displayName`, `kennitala`, `imageUrl`
+  - `POST /control/contestants/import`
+    - body: `text` (plain text copy/paste) eða `lines` (array af línum)
+
 ## Gangtegundir (mapping)
 Eftirfarandi gangtegundir eru studdar og skrifast í viðeigandi dálka:
 - `Tölt frjáls hraði` → `TFH` (E1_TFH … E5_TFH)
