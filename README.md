@@ -76,14 +76,17 @@ npm run db:migrate
 ```
 - Control endpoints (krefjast innskráningar á `/control/login`):
   - `GET /control/db/health`
-  - `GET /control/teams?q=<team>`
+  - `GET /control/leagues/events?leagueKey=<leagueKey>`
+  - `POST /control/leagues/events`
+    - body: `leagueKey`, `eventId` eða `eventIds[]`
+  - `GET /control/teams?leagueKey=<leagueKey>&eventId=<eventId>&q=<team>`
   - `POST /control/teams`
-    - body: `name`
-  - `GET /control/contestants?q=<nafn>`
+    - body: `name` + (`leagueKey` eða `eventId`)
+  - `GET /control/contestants?q=<nafn>&leagueKey=<leagueKey>&eventId=<eventId>`
   - `POST /control/contestants`
-    - body: `displayName`, `kennitala`, `imageUrl`, `teamId`
+    - body: `displayName`, `kennitala`, `imageUrl`, `leagueTeamId`
   - `POST /control/contestants/import`
-    - body: `text` (plain text copy/paste) eða `lines` (array af línum)
+    - body: (`leagueKey` eða `eventId`) + (`eventIds[]` valfrjálst) + `text` (plain text copy/paste) eða `lines` (array af línum)
 
 ## Gangtegundir (mapping)
 Eftirfarandi gangtegundir eru studdar og skrifast í viðeigandi dálka:

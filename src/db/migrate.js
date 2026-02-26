@@ -54,6 +54,112 @@ const migrations = [
         ON contestants (team_id);
     `,
   },
+  {
+    name: '004_add_event_scoped_team_memberships',
+    sql: `
+      CREATE TABLE IF NOT EXISTS event_teams (
+        id BIGSERIAL PRIMARY KEY,
+        event_id BIGINT NOT NULL,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(event_id, slug)
+      );
+
+      CREATE INDEX IF NOT EXISTS event_teams_event_id_idx
+        ON event_teams (event_id);
+
+      CREATE TABLE IF NOT EXISTS contestant_team_memberships (
+        id BIGSERIAL PRIMARY KEY,
+        contestant_id BIGINT NOT NULL REFERENCES contestants(id) ON DELETE CASCADE,
+        event_id BIGINT NOT NULL,
+        event_team_id BIGINT NOT NULL REFERENCES event_teams(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(contestant_id, event_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS contestant_team_memberships_event_id_idx
+        ON contestant_team_memberships (event_id);
+    `,
+  },
+  {
+    name: '005_add_league_scoped_team_memberships',
+    sql: `
+      CREATE TABLE IF NOT EXISTS league_events (
+        event_id BIGINT PRIMARY KEY,
+        league_key TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS league_events_league_key_idx
+        ON league_events (league_key);
+
+      CREATE TABLE IF NOT EXISTS league_teams (
+        id BIGSERIAL PRIMARY KEY,
+        league_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(league_key, slug)
+      );
+
+      CREATE INDEX IF NOT EXISTS league_teams_league_key_idx
+        ON league_teams (league_key);
+
+      CREATE TABLE IF NOT EXISTS contestant_league_memberships (
+        id BIGSERIAL PRIMARY KEY,
+        contestant_id BIGINT NOT NULL REFERENCES contestants(id) ON DELETE CASCADE,
+        league_key TEXT NOT NULL,
+        league_team_id BIGINT NOT NULL REFERENCES league_teams(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(contestant_id, league_key)
+      );
+
+      CREATE INDEX IF NOT EXISTS contestant_league_memberships_league_key_idx
+        ON contestant_league_memberships (league_key);
+
+      INSERT INTO league_events (event_id, league_key)
+      SELECT DISTINCT et.event_id, 'event-' || et.event_id::text
+      FROM event_teams et
+      ON CONFLICT (event_id) DO NOTHING;
+
+      INSERT INTO league_teams (league_key, name, slug)
+      SELECT DISTINCT
+        'event-' || et.event_id::text AS league_key,
+        et.name,
+        et.slug
+      FROM event_teams et
+      ON CONFLICT (league_key, slug)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        updated_at = NOW();
+
+      INSERT INTO contestant_league_memberships (
+        contestant_id,
+        league_key,
+        league_team_id
+      )
+      SELECT
+        ctm.contestant_id,
+        'event-' || ctm.event_id::text AS league_key,
+        lt.id AS league_team_id
+      FROM contestant_team_memberships ctm
+      JOIN event_teams et
+        ON et.id = ctm.event_team_id
+      JOIN league_teams lt
+        ON lt.league_key = 'event-' || ctm.event_id::text
+       AND lt.slug = et.slug
+      ON CONFLICT (contestant_id, league_key)
+      DO UPDATE SET
+        league_team_id = EXCLUDED.league_team_id,
+        updated_at = NOW();
+    `,
+  },
 ];
 
 export async function runMigrations() {
