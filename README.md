@@ -76,9 +76,12 @@ npm run db:migrate
 ```
 - Control endpoints (krefjast innskráningar á `/control/login`):
   - `GET /control/db/health`
+  - `GET /control/teams`
+  - `POST /control/teams`
+    - body: `name`
   - `GET /control/contestants?q=<nafn>`
   - `POST /control/contestants`
-    - body: `displayName`, `kennitala`, `imageUrl`
+    - body: `displayName`, `kennitala`, `imageUrl`, `teamId`
   - `POST /control/contestants/import`
     - body: `text` (plain text copy/paste) eða `lines` (array af línum)
 

@@ -14,6 +14,14 @@ function parseOptionalText(value) {
   return text || null;
 }
 
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function normalizeContestantName(line) {
   const trimmed = String(line || '').trim();
   if (!trimmed) return '';
@@ -31,9 +39,36 @@ function isLikelyContestantName(name) {
     .map((part) => part.trim())
     .filter(Boolean);
 
-  // Contestant names are expected to contain first + last name at minimum.
   if (words.length < 2) return false;
   return true;
+}
+
+function isIgnoredImportLine(line) {
+  return /^meistaradeild\b/i.test(String(line || '').trim());
+}
+
+function normalizeTeamName(line) {
+  return String(line || '').replace(/\s+/g, ' ').trim();
+}
+
+async function upsertTeam(name) {
+  const normalizedName = normalizeTeamName(name);
+  if (!normalizedName) return null;
+  const slug = slugify(normalizedName);
+  if (!slug) return null;
+
+  const result = await queryDb(
+    `
+    INSERT INTO teams (name, slug)
+    VALUES ($1, $2)
+    ON CONFLICT (slug)
+    DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
+    RETURNING id, name, slug, updated_at
+    `,
+    [normalizedName, slug],
+  );
+
+  return result.rows[0] || null;
 }
 
 async function importContestantsFromText(text) {
@@ -43,35 +78,77 @@ async function importContestantsFromText(text) {
     .filter(Boolean);
 
   let created = 0;
+  let updated = 0;
   let skipped = 0;
   const inserted = [];
   const skippedLines = [];
+  const teams = new Map();
+  let currentTeamId = null;
 
   for (const rawLine of lines) {
-    const displayName = normalizeContestantName(rawLine);
-    if (!isLikelyContestantName(displayName)) {
+    if (isIgnoredImportLine(rawLine)) {
       skipped += 1;
       skippedLines.push(rawLine);
       continue;
     }
 
+    const displayName = normalizeContestantName(rawLine);
+    if (!isLikelyContestantName(displayName)) {
+      const team = await upsertTeam(rawLine);
+      if (team) {
+        currentTeamId = team.id;
+        teams.set(team.slug, team);
+      } else {
+        skipped += 1;
+        skippedLines.push(rawLine);
+      }
+      continue;
+    }
+
     const existing = await queryDb(
-      'SELECT id FROM contestants WHERE LOWER(display_name) = LOWER($1) LIMIT 1',
+      `
+      SELECT id, team_id
+      FROM contestants
+      WHERE LOWER(display_name) = LOWER($1)
+      ORDER BY id ASC
+      `,
       [displayName],
     );
 
     if (existing.rowCount > 0) {
-      skipped += 1;
-      continue;
+      const sameTeam = existing.rows.find((row) => {
+        const teamId = row.team_id == null ? null : Number(row.team_id);
+        const importTeamId = currentTeamId == null ? null : Number(currentTeamId);
+        return teamId === importTeamId;
+      });
+
+      if (sameTeam) {
+        skipped += 1;
+        continue;
+      }
+
+      const unassigned = existing.rows.find((row) => row.team_id == null);
+      if (unassigned && currentTeamId != null) {
+        await queryDb(
+          `
+          UPDATE contestants
+          SET team_id = $2, updated_at = NOW()
+          WHERE id = $1
+          `,
+          [unassigned.id, currentTeamId],
+        );
+        updated += 1;
+        continue;
+      }
     }
 
     const insertedRow = await queryDb(
       `
-      INSERT INTO contestants (display_name)
-      VALUES ($1)
-      RETURNING id, display_name, created_at
+      INSERT INTO contestants (display_name, team_id)
+      VALUES ($1, $2)
+      RETURNING id, display_name, team_id, created_at
       `,
-      [displayName],
+      [displayName, currentTeamId],
     );
     created += 1;
     inserted.push(insertedRow.rows[0]);
@@ -79,7 +156,9 @@ async function importContestantsFromText(text) {
 
   return {
     totalLines: lines.length,
+    teams: [...teams.values()],
     created,
+    updated,
     skipped,
     inserted,
     skippedLines,
@@ -88,6 +167,7 @@ async function importContestantsFromText(text) {
 
 async function upsertContestant(body) {
   const id = parseOptionalBigInt(body.id);
+  const teamId = parseOptionalBigInt(body.teamId);
   const kennitala = parseOptionalText(body.kennitala);
   const displayName = parseOptionalText(body.displayName);
   const imageUrl = parseOptionalText(body.imageUrl);
@@ -127,16 +207,12 @@ async function upsertContestant(body) {
         kennitala = COALESCE($2, kennitala),
         display_name = COALESCE($3, display_name),
         image_url = $4,
+        team_id = COALESCE($5, team_id),
         updated_at = NOW()
       WHERE id = $1
-      RETURNING id, kennitala, display_name, image_url, updated_at
+      RETURNING id, kennitala, display_name, image_url, team_id, updated_at
       `,
-      [
-        contestantId,
-        kennitala,
-        displayName,
-        imageUrl,
-      ],
+      [contestantId, kennitala, displayName, imageUrl, teamId],
     );
     return { status: 200, body: updated.rows[0] };
   }
@@ -144,15 +220,11 @@ async function upsertContestant(body) {
   const inserted = await queryDb(
     `
     INSERT INTO contestants (
-      kennitala, display_name, image_url
-    ) VALUES ($1, $2, $3)
-    RETURNING id, kennitala, display_name, image_url, created_at
+      kennitala, display_name, image_url, team_id
+    ) VALUES ($1, $2, $3, $4)
+    RETURNING id, kennitala, display_name, image_url, team_id, created_at
     `,
-    [
-      kennitala,
-      displayName,
-      imageUrl,
-    ],
+    [kennitala, displayName, imageUrl, teamId],
   );
 
   return { status: 201, body: inserted.rows[0] };
@@ -187,6 +259,43 @@ export function registerRosterRoutes(app) {
     }
   });
 
+  app.get('/control/teams', async (req, res) => {
+    if (!requireControlSession(req, res, true)) return;
+
+    try {
+      const result = await queryDb(
+        `
+        SELECT id, name, slug, created_at, updated_at
+        FROM teams
+        ORDER BY name ASC
+        `,
+      );
+      return res.json({ total: result.rowCount, items: result.rows });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ error: 'Failed to load teams', message: error.message });
+    }
+  });
+
+  app.post('/control/teams', async (req, res) => {
+    if (!requireControlSession(req, res, true)) return;
+
+    const name = parseOptionalText(req.body?.name);
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    try {
+      const team = await upsertTeam(name);
+      return res.json(team);
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ error: 'Failed to save team', message: error.message });
+    }
+  });
+
   app.get('/control/contestants', async (req, res) => {
     if (!requireControlSession(req, res, true)) return;
 
@@ -207,8 +316,11 @@ export function registerRosterRoutes(app) {
           c.kennitala,
           c.display_name,
           c.image_url,
+          c.team_id,
+          t.name AS team_name,
           c.updated_at
         FROM contestants c
+        LEFT JOIN teams t ON t.id = c.team_id
         ${where}
         ORDER BY c.display_name ASC
         LIMIT 500
@@ -218,7 +330,9 @@ export function registerRosterRoutes(app) {
 
       return res.json({ total: result.rowCount, items: result.rows });
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to load contestants', message: error.message });
+      return res
+        .status(500)
+        .json({ error: 'Failed to load contestants', message: error.message });
     }
   });
 
@@ -229,7 +343,9 @@ export function registerRosterRoutes(app) {
       const outcome = await upsertContestant(req.body || {});
       return res.status(outcome.status).json(outcome.body);
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to save contestant', message: error.message });
+      return res
+        .status(500)
+        .json({ error: 'Failed to save contestant', message: error.message });
     }
   });
 
