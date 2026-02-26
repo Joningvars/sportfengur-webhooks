@@ -53,6 +53,20 @@ function isIgnoredImportLine(line) {
   return /^meistaradeild\b/i.test(String(line || '').trim());
 }
 
+function isLikelyTeamHeader(line, nextLine = '') {
+  const text = String(line || '').trim();
+  if (!text) return false;
+
+  if (isIgnoredImportLine(text)) return false;
+  if (text.includes('/')) return true;
+  if (/\d/.test(text)) return true;
+  if (text.split(/\s+/).filter(Boolean).length === 1) return true;
+  if (/\b(rider|team)\b/i.test(text)) return true;
+  if (/\bliðsstjóri\b/i.test(String(nextLine || ''))) return true;
+
+  return false;
+}
+
 async function upsertLeagueEvent(eventId, leagueKey) {
   if (!eventId || !leagueKey) return null;
   const result = await queryDb(
@@ -168,15 +182,17 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
   const teams = new Map();
   let currentLeagueTeamId = null;
 
-  for (const rawLine of lines) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const rawLine = lines[i];
+    const nextLine = lines[i + 1] || '';
+
     if (isIgnoredImportLine(rawLine)) {
       skipped += 1;
       skippedLines.push(rawLine);
       continue;
     }
 
-    const displayName = normalizeContestantName(rawLine);
-    if (!isLikelyContestantName(displayName)) {
+    if (isLikelyTeamHeader(rawLine, nextLine)) {
       const team = await upsertLeagueTeam(rawLine, leagueKey);
       if (team) {
         currentLeagueTeamId = team.id;
@@ -185,6 +201,13 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
         skipped += 1;
         skippedLines.push(rawLine);
       }
+      continue;
+    }
+
+    const displayName = normalizeContestantName(rawLine);
+    if (!isLikelyContestantName(displayName)) {
+      skipped += 1;
+      skippedLines.push(rawLine);
       continue;
     }
 
