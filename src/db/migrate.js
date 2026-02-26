@@ -36,6 +36,24 @@ const migrations = [
       DROP TABLE IF EXISTS teams;
     `,
   },
+  {
+    name: '003_add_teams_and_contestant_team_link',
+    sql: `
+      CREATE TABLE IF NOT EXISTS teams (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      ALTER TABLE contestants
+        ADD COLUMN IF NOT EXISTS team_id BIGINT REFERENCES teams(id) ON DELETE SET NULL;
+
+      CREATE INDEX IF NOT EXISTS contestants_team_id_idx
+        ON contestants (team_id);
+    `,
+  },
 ];
 
 export async function runMigrations() {
