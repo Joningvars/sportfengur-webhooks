@@ -261,14 +261,24 @@ export function registerRosterRoutes(app) {
 
   app.get('/control/teams', async (req, res) => {
     if (!requireControlSession(req, res, true)) return;
+    const search = parseOptionalText(req.query?.q);
 
     try {
+      const values = [];
+      let where = '';
+      if (search) {
+        values.push(`%${search.toLowerCase()}%`);
+        where = 'WHERE LOWER(name) LIKE $1 OR LOWER(slug) LIKE $1';
+      }
+
       const result = await queryDb(
         `
         SELECT id, name, slug, created_at, updated_at
         FROM teams
+        ${where}
         ORDER BY name ASC
         `,
+        values,
       );
       return res.json({ total: result.rowCount, items: result.rows });
     } catch (error) {
