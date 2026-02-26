@@ -43,3 +43,6 @@ export const VMIX_DEBOUNCE_MS = Number(process.env.VMIX_DEBOUNCE_MS || 200);
 export const VMIX_REFRESH_TIMEOUT_MS = Number(
   process.env.VMIX_REFRESH_TIMEOUT_MS || 30000,
 );
+export const DATABASE_URL = process.env.DATABASE_URL || '';
+export const DATABASE_SSL = process.env.DATABASE_SSL === 'true';
+export const DATABASE_POOL_MAX = Number(process.env.DATABASE_POOL_MAX || 10);
