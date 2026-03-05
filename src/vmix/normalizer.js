@@ -38,6 +38,34 @@ function roundScore(value, fixedTwoDecimals = false) {
   return text;
 }
 
+function averageForDisplay(scores) {
+  if (!Array.isArray(scores) || scores.length === 0) return null;
+
+  const numeric = scores.filter((n) => Number.isFinite(n));
+  if (numeric.length === 0) return null;
+
+  // SportFengur judging convention for 5 judges: drop highest + lowest.
+  if (numeric.length === 5) {
+    const sorted = [...numeric].sort((a, b) => a - b);
+    const trimmed = sorted.slice(1, 4);
+    return trimmed.reduce((sum, n) => sum + n, 0) / trimmed.length;
+  }
+
+  return numeric.reduce((sum, n) => sum + n, 0) / numeric.length;
+}
+
+function getDisplayTotalScore(entry) {
+  // In tie-break situations SportFengur provides 5-judge average here.
+  if (
+    entry?.keppandi_einkunn_5_ds !== null &&
+    entry?.keppandi_einkunn_5_ds !== undefined &&
+    entry?.keppandi_einkunn_5_ds !== ''
+  ) {
+    return entry.keppandi_einkunn_5_ds;
+  }
+  return entry?.keppandi_medaleinkunn;
+}
+
 function sanitizeGaitKey(gaitType) {
   return String(gaitType)
     .toLowerCase()
@@ -90,9 +118,8 @@ function extractGaitScores(judges) {
 
   const adalScores = Object.values(gaitScores.adal).filter((s) => s !== '');
   if (adalScores.length > 0) {
-    const sum = adalScores.reduce((a, b) => a + Number(b), 0);
-    const avg = sum / adalScores.length;
-    gaitScores.adal.E6 = roundScore(avg, true);
+    const avg = averageForDisplay(adalScores.map((s) => Number(s)));
+    gaitScores.adal.E6 = avg == null ? '' : roundScore(avg, true);
   } else {
     gaitScores.adal.E6 = '';
   }
@@ -137,9 +164,8 @@ function extractGaitScores(judges) {
     }
 
     if (scores.length > 0) {
-      const sum = scores.reduce((a, b) => a + b, 0);
-      const avg = sum / scores.length;
-      gaitScores[gaitKey].E6 = roundScore(avg, true);
+      const avg = averageForDisplay(scores);
+      gaitScores[gaitKey].E6 = avg == null ? '' : roundScore(avg, true);
     } else {
       gaitScores[gaitKey].E6 = '';
       delete gaitScores[gaitKey];
@@ -209,7 +235,7 @@ export function normalizeCurrent(apiResponse) {
   const e3 = judgeScores[2] || '';
   const e4 = judgeScores[3] || '';
   const e5 = judgeScores[4] || '';
-  const e6 = roundScore(apiResponse.keppandi_medaleinkunn, true);
+  const e6 = roundScore(getDisplayTotalScore(apiResponse), true);
 
   const liturRas =
     apiResponse.rodun_litur_numer != null && apiResponse.rodun_litur
@@ -284,7 +310,7 @@ export function normalizeLeaderboard(apiResponse) {
       const e3 = judgeScores[2] || '';
       const e4 = judgeScores[3] || '';
       const e5 = judgeScores[4] || '';
-      const e6 = roundScore(entry.keppandi_medaleinkunn, true);
+      const e6 = roundScore(getDisplayTotalScore(entry), true);
 
       const liturRas =
         entry.rodun_litur_numer != null && entry.rodun_litur

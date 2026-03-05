@@ -100,6 +100,7 @@ export async function fetchLeaderboard(
         ...rider,
         einkunnir_domara: score?.einkunnir_domara || [],
         keppandi_medaleinkunn: score?.keppandi_medaleinkunn,
+        keppandi_einkunn_5_ds: score?.keppandi_einkunn_5_ds,
         saeti: score?.saeti,
       };
     });
