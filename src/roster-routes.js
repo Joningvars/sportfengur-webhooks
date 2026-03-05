@@ -53,16 +53,24 @@ function isIgnoredImportLine(line) {
   return /^meistaradeild\b/i.test(String(line || '').trim());
 }
 
-function isLikelyTeamHeader(line, nextLine = '') {
+function isLikelyTeamHeader(
+  line,
+  nextLine = '',
+  { hasActiveTeam = false } = {},
+) {
   const text = String(line || '').trim();
   if (!text) return false;
 
   if (isIgnoredImportLine(text)) return false;
+  if (/^lið\b/i.test(text)) return true;
+  if (text.includes('&')) return true;
   if (text.includes('/')) return true;
   if (/\d/.test(text)) return true;
   if (text.split(/\s+/).filter(Boolean).length === 1) return true;
   if (/\b(rider|team)\b/i.test(text)) return true;
   if (/\bliðsstjóri\b/i.test(String(nextLine || ''))) return true;
+  // First meaningful line in an import block is expected to be a team name.
+  if (!hasActiveTeam && isLikelyContestantName(nextLine)) return true;
 
   return false;
 }
@@ -193,7 +201,11 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
       continue;
     }
 
-    if (isLikelyTeamHeader(rawLine, nextLine)) {
+    if (
+      isLikelyTeamHeader(rawLine, nextLine, {
+        hasActiveTeam: Boolean(currentLeagueTeamId),
+      })
+    ) {
       const team = await upsertLeagueTeam(rawLine, leagueKey);
       if (team) {
         currentLeagueTeamId = team.id;
