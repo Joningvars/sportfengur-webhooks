@@ -14,6 +14,16 @@ function parseOptionalText(value) {
   return text || null;
 }
 
+function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === 'boolean') return value;
+  const text = String(value).trim().toLowerCase();
+  if (!text) return defaultValue;
+  if (['true', '1', 'yes', 'y', 'on'].includes(text)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(text)) return false;
+  return defaultValue;
+}
+
 function parseEventIds(value) {
   if (!Array.isArray(value)) return [];
   const out = [];
@@ -40,6 +50,10 @@ function normalizeContestantName(line) {
   const trimmed = String(line || '').trim();
   if (!trimmed) return '';
   return trimmed.replace(/\s*-\s*liðsstjóri\s*$/i, '').trim();
+}
+
+function normalizeTeamName(line) {
+  return String(line || '').replace(/\s+/g, ' ').trim();
 }
 
 function isLikelyContestantName(name) {
@@ -256,6 +270,73 @@ async function importContestantsFromText(text, leagueKey, eventIds = []) {
     insertedContestants,
     skippedLines,
     seenContestantIds: [...seenContestantIds],
+  };
+}
+
+function getImportRowsFromBody(body) {
+  if (Array.isArray(body)) return body;
+  if (!body || typeof body !== 'object') return [];
+
+  const candidates = [
+    body.rows,
+    body.items,
+    body.contestants,
+    body.memberships,
+  ];
+  for (const value of candidates) {
+    if (Array.isArray(value)) return value;
+  }
+
+  return [];
+}
+
+function buildImportTextFromRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const byTeam = new Map();
+  const teamOrder = [];
+  let skipped = 0;
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') {
+      skipped += 1;
+      continue;
+    }
+
+    const team = normalizeTeamName(
+      row.Lid ?? row.team ?? row.teamName ?? row.liD ?? '',
+    );
+    const rider = normalizeContestantName(
+      row.Knapi ?? row.displayName ?? row.name ?? row.rider ?? '',
+    );
+
+    if (!team || !rider) {
+      skipped += 1;
+      continue;
+    }
+
+    if (!byTeam.has(team)) {
+      byTeam.set(team, []);
+      teamOrder.push(team);
+    }
+    byTeam.get(team).push(rider);
+  }
+
+  if (teamOrder.length === 0) return null;
+
+  const lines = [];
+  for (const team of teamOrder) {
+    lines.push(team);
+    for (const rider of byTeam.get(team)) {
+      lines.push(rider);
+    }
+  }
+
+  return {
+    text: lines.join('\n'),
+    sourceTeams: teamOrder.length,
+    sourceRows: rows.length,
+    skippedRows: skipped,
   };
 }
 
@@ -593,20 +674,22 @@ export function registerRosterRoutes(app) {
   app.post('/control/contestants/import', async (req, res) => {
     if (!requireControlSession(req, res, true)) return;
 
-    const eventId = parseOptionalBigInt(req.body?.eventId);
-    const eventIds = parseEventIds(req.body?.eventIds);
+    const payload = req.body;
+    const eventId = parseOptionalBigInt(payload?.eventId);
+    const eventIds = parseEventIds(payload?.eventIds);
     if (eventId && !eventIds.includes(eventId)) {
       eventIds.push(eventId);
     }
 
     const leagueKey = await resolveLeagueKey({
-      leagueKey: req.body?.leagueKey,
+      leagueKey: payload?.leagueKey,
       eventId,
     });
 
-    const text =
-      parseOptionalText(req.body?.text) ||
-      (Array.isArray(req.body?.lines) ? req.body.lines.join('\n') : null);
+    const inlineText = parseOptionalText(payload?.text);
+    const linesText = Array.isArray(payload?.lines) ? payload.lines.join('\n') : null;
+    const rowSource = buildImportTextFromRows(getImportRowsFromBody(payload));
+    const text = inlineText || linesText || rowSource?.text || null;
 
     if (!leagueKey) {
       return res.status(400).json({
@@ -618,13 +701,12 @@ export function registerRosterRoutes(app) {
     if (!text) {
       return res.status(400).json({
         error: 'Missing import content',
-        message: 'Provide text or lines in request body',
+        message: 'Provide text, lines, or rows/contestants array in request body',
       });
     }
 
     try {
-      const replaceExisting =
-        req.body?.replaceExisting == null ? true : Boolean(req.body.replaceExisting);
+      const replaceExisting = parseBoolean(payload?.replaceExisting, true);
 
       const result = await importContestantsFromText(text, leagueKey, eventIds);
 
@@ -652,6 +734,16 @@ export function registerRosterRoutes(app) {
 
       const { seenContestantIds, ...response } = result;
       response.replaceExisting = replaceExisting;
+      if (rowSource) {
+        response.source = {
+          type: 'rows',
+          rows: rowSource.sourceRows,
+          teams: rowSource.sourceTeams,
+          skippedRows: rowSource.skippedRows,
+        };
+      } else if (inlineText || linesText) {
+        response.source = { type: inlineText ? 'text' : 'lines' };
+      }
       return res.json(response);
     } catch (error) {
       return res.status(500).json({
